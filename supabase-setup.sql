@@ -63,3 +63,10 @@ $$;
 
 revoke all on function public.riskdesk_push(text, jsonb, jsonb) from public;
 grant execute on function public.riskdesk_push(text, jsonb, jsonb) to anon, authenticated;
+
+-- 4) Hak akses Data API (wajib jika opsi "Automatically expose new tables" dimatikan saat membuat project)
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on public.riskdesk_data to authenticated;
+grant select, insert, update, delete on public.riskdesk_mt5  to authenticated;
+revoke all on public.riskdesk_data from anon;
+revoke all on public.riskdesk_mt5  from anon;
