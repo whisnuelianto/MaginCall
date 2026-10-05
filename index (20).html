@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RiskDesk — Kalkulator Risiko MT5</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0E1726; --panel:#15223A; --panel2:#1B2B47; --line:#263752; --line2:#33476B;
+  --text:#E6EDF7; --muted:#8A9AB5; --brass:#E0B04B; --brass-dim:#E0B04B33;
+  --buy:#2BC4A0; --buy-dim:#2BC4A022; --sell:#F0616D; --sell-dim:#F0616D22; --warn:#F2A33A;
+  --sans:"Manrope",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--ink);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.5;
+  background-image:radial-gradient(1200px 500px at 85% -10%,#1d3358 0%,transparent 60%);min-height:100vh}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.wrap{max-width:1240px;margin:0 auto;padding:0 20px 60px}
+
+/* top bar */
+.top{display:flex;align-items:center;gap:18px;padding:16px 0;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;letter-spacing:-.02em}
+.brand-mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--brass),#b8862b);display:grid;place-items:center}
+.brand-mark svg{width:18px;height:18px}
+.sessions{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+.sess{font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);display:flex;align-items:center;gap:6px}
+.sess i{width:7px;height:7px;border-radius:50%;background:var(--line2)}
+.sess.on{color:var(--text);border-color:var(--buy)}
+.sess.on i{background:var(--buy);box-shadow:0 0 0 3px var(--buy-dim)}
+.clock{font-size:13px;color:var(--muted)}
+.btn{border:1px solid var(--line2);background:var(--panel2);border-radius:10px;padding:9px 14px;cursor:pointer;font-weight:600;font-size:14px;transition:background .15s,border-color .15s}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--brass);border-color:var(--brass);color:#1a1405}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent}
+.btn.sm{padding:5px 10px;font-size:12.5px;border-radius:8px}
+.btn.danger{border-color:#5a2a33;color:var(--sell)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* risk budget hero */
+.budget{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px 24px 20px;margin-top:6px}
+.budget-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.budget h1{font-size:15px;font-weight:600;color:var(--muted);margin:0 0 4px}
+.budget-big{font-size:clamp(30px,5vw,46px);font-weight:600;letter-spacing:-.03em;line-height:1.05}
+.budget-big small{font-size:.42em;color:var(--muted);font-weight:500;letter-spacing:0;margin-left:6px}
+.budget-stats{display:flex;gap:28px;flex-wrap:wrap}
+.bstat span{display:block;font-size:12.5px;color:var(--muted)}
+.bstat b{font-size:18px;font-weight:600}
+.meter{position:relative;margin-top:22px;height:34px;border-radius:10px;background:repeating-linear-gradient(90deg,var(--panel2) 0 calc(10% - 1px),var(--line) calc(10% - 1px) 10%);overflow:visible}
+.meter-fill{position:absolute;inset:0;display:flex;border-radius:10px;overflow:hidden}
+.seg{height:100%;transition:width .4s ease;position:relative;border-right:2px solid var(--panel)}
+.seg.preview{background:repeating-linear-gradient(45deg,#E0B04B55 0 6px,#E0B04B22 6px 12px)!important}
+.wall{position:absolute;top:-8px;bottom:-8px;width:3px;background:var(--sell);border-radius:2px;transition:left .3s}
+.wall::after{content:attr(data-label);position:absolute;top:-22px;left:50%;transform:translateX(-50%);font-size:11.5px;color:var(--sell);white-space:nowrap;font-family:var(--mono)}
+.warnline{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed var(--warn);opacity:.7}
+.meter-scale{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px}
+.budget-msg{margin-top:14px;font-size:14px;padding:10px 14px;border-radius:10px;display:flex;gap:10px;align-items:center}
+.budget-msg.ok{background:var(--buy-dim);color:#9fe6d4}
+.budget-msg.warn{background:#F2A33A22;color:#ffd08f}
+.budget-msg.danger{background:var(--sell-dim);color:#ffb3b9;animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 4px var(--sell-dim)}}
+
+/* grid */
+.grid{display:grid;grid-template-columns:1.1fr .9fr;gap:20px;margin-top:20px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px}
+.card h2{font-size:17px;margin:0 0 4px;font-weight:700;letter-spacing:-.01em}
+.card .sub{color:var(--muted);font-size:13.5px;margin:0 0 16px}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.field label{font-size:13px;color:var(--muted);font-weight:600}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+input[type=number],input[type=text],input[type=password],select{width:100%;background:var(--ink);border:1px solid var(--line2);border-radius:10px;padding:10px 12px;font-size:15px;outline:none;transition:border-color .15s}
+input:focus,select:focus{border-color:var(--brass)}
+input.num{font-family:var(--mono)}
+input.bad{border-color:var(--sell)}
+.hint{font-size:12px;color:var(--muted)}
+.hint.err{color:var(--sell)}
+
+/* combobox */
+.combo{position:relative}
+.combo-list{position:absolute;z-index:30;left:0;right:0;top:calc(100% + 4px);max-height:320px;overflow:auto;background:var(--panel2);border:1px solid var(--line2);border-radius:12px;padding:6px;display:none;box-shadow:0 20px 40px #0008}
+.combo-list.open{display:block}
+.combo-group{font-size:11.5px;color:var(--brass);padding:8px 10px 4px;font-weight:700}
+.combo-item{padding:8px 10px;border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;font-family:var(--mono);font-size:14px}
+.combo-item span{color:var(--muted);font-family:var(--sans);font-size:12px}
+.combo-item:hover,.combo-item.act{background:var(--line)}
+
+/* direction toggle */
+.dir{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--line2);border-radius:12px;overflow:hidden}
+.dir button{border:0;background:transparent;padding:11px;font-weight:700;cursor:pointer;color:var(--muted);font-size:15px}
+.dir button.buy.on{background:var(--buy);color:#06261e}
+.dir button.sell.on{background:var(--sell);color:#2c070b}
+.lotrow{display:flex;gap:6px}
+.lotrow input{flex:1}
+.step{width:40px;flex:none;border:1px solid var(--line2);background:var(--panel2);border-radius:10px;cursor:pointer;font-size:18px}
+
+/* ticket */
+.ticket{position:sticky;top:16px;align-self:start}
+.ticket-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.sym{font-family:var(--mono);font-size:22px;font-weight:600}
+.badge{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px}
+.badge.buy{background:var(--buy-dim);color:var(--buy)}
+.badge.sell{background:var(--sell-dim);color:var(--sell)}
+.pl{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.plbox{border-radius:12px;padding:14px;border:1px solid var(--line)}
+.plbox.loss{background:linear-gradient(180deg,var(--sell-dim),transparent)}
+.plbox.win{background:linear-gradient(180deg,var(--buy-dim),transparent)}
+.plbox span{font-size:12.5px;color:var(--muted);display:block}
+.plbox b{font-size:24px;font-weight:600;display:block;margin:2px 0}
+.plbox.loss b{color:var(--sell)} .plbox.win b{color:var(--buy)}
+.plbox em{font-style:normal;font-size:12.5px;color:var(--muted)}
+.kv{display:grid;grid-template-columns:1fr auto;gap:8px 12px;margin:16px 0;font-size:14px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;text-align:right}
+.rr{margin:4px 0 16px}
+.rr-bar{display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--panel2)}
+.rr-bar i{display:block;height:100%}
+.rr-lbl{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:5px}
+.checks{list-style:none;padding:0;margin:0 0 16px;display:flex;flex-direction:column;gap:6px;font-size:13.5px}
+.checks li{display:flex;gap:8px;align-items:flex-start}
+.checks li::before{content:"";flex:none;width:16px;height:16px;margin-top:2px;border-radius:50%;background:var(--buy-dim);border:2px solid var(--buy)}
+.checks li.bad::before{background:var(--sell-dim);border-color:var(--sell)}
+.checks li.mid::before{background:#F2A33A22;border-color:var(--warn)}
+
+/* sizer */
+.sizer-out{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--ink);border:1px dashed var(--line2);border-radius:12px;padding:12px 14px}
+.sizer-out b{font-size:22px}
+
+/* tables */
+.tbl-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;color:var(--muted);font-weight:600;font-size:12.5px;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px;border-bottom:1px solid var(--line);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+.dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:8px;vertical-align:-1px}
+.c-buy{color:var(--buy)} .c-sell{color:var(--sell)} .c-muted{color:var(--muted)}
+.empty{color:var(--muted);text-align:center;padding:28px 10px;font-size:14px}
+.actions{display:flex;gap:6px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.stat{background:var(--ink);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.stat span{display:block;font-size:12px;color:var(--muted)}
+.stat b{font-size:17px;font-weight:600}
+.curve{width:100%;height:90px;display:block;margin-bottom:12px}
+.full{grid-column:1/-1}
+
+/* modal */
+.modal{position:fixed;inset:0;background:#050a14cc;backdrop-filter:blur(4px);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:5vh 16px;overflow:auto}
+.modal.open{display:flex}
+.modal-box{background:var(--panel);border:1px solid var(--line2);border-radius:18px;width:min(860px,100%);padding:22px;animation:pop .2s ease}
+@keyframes pop{from{transform:translateY(10px);opacity:0}}
+.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.modal-head h2{margin:0;font-size:20px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:18px;overflow-x:auto}
+.tabs button{background:none;border:0;padding:10px 14px;cursor:pointer;color:var(--muted);font-weight:600;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs button.on{color:var(--text);border-color:var(--brass)}
+.tabpane{display:none}.tabpane.on{display:block}
+.switch{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.switch input{width:20px;height:20px;accent-color:var(--brass)}
+.symtbl input{padding:6px 8px;font-size:13px;border-radius:7px;min-width:70px}
+.symtbl td{padding:5px 6px}
+.pin-box{max-width:340px;margin:20px auto;text-align:center}
+.pin-box input{text-align:center;font-size:22px;letter-spacing:.4em;font-family:var(--mono)}
+
+/* toast */
+.toasts{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;z-index:80;max-width:min(380px,calc(100% - 32px))}
+.toast{background:var(--panel2);border:1px solid var(--line2);border-left:4px solid var(--brass);border-radius:12px;padding:12px 14px;font-size:14px;box-shadow:0 12px 30px #0009;animation:pop .2s ease}
+.toast.danger{border-left-color:var(--sell)} .toast.ok{border-left-color:var(--buy)} .toast.warn{border-left-color:var(--warn)}
+.toast b{display:block;margin-bottom:2px}
+
+footer{color:var(--muted);font-size:12.5px;text-align:center;margin-top:30px}
+
+@media (max-width:900px){
+  .grid{grid-template-columns:1fr}
+  .ticket{position:static}
+  .stats{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:520px){
+  .row3{grid-template-columns:1fr 1fr}
+  .budget{padding:18px}
+  .sessions{margin-left:0;width:100%}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#1a1405" stroke-width="2.4" stroke-linecap="round"><path d="M4 18V9M10 18V5M16 18v-6M22 18H2"/></svg></div>
+      RiskDesk
+    </div>
+    <div class="sessions" id="sessions"></div>
+    <div class="clock num" id="clock"></div>
+    <button class="btn" id="btnAdmin" aria-label="Buka panel admin">⚙ Admin</button>
+  </header>
+
+  <!-- Risk budget -->
+  <section class="budget" aria-labelledby="budgetTitle">
+    <div class="budget-head">
+      <div>
+        <h1 id="budgetTitle">Total risiko semua SL terhadap modal</h1>
+        <div class="budget-big num" id="riskPct">0,00%<small>dari batas 25%</small></div>
+      </div>
+      <div class="budget-stats">
+        <div class="bstat"><span>Modal</span><b class="num" id="bBalance">—</b></div>
+        <div class="bstat"><span>Risiko terpakai</span><b class="num c-sell" id="bUsed">—</b></div>
+        <div class="bstat"><span>Sisa ruang risiko</span><b class="num c-buy" id="bLeft">—</b></div>
+        <div class="bstat"><span>Posisi aktif</span><b class="num" id="bCount">0</b></div>
+      </div>
+    </div>
+    <div class="meter" id="meter" role="img" aria-label="Meter risiko">
+      <div class="meter-fill" id="meterFill"></div>
+      <div class="warnline" id="warnLine"></div>
+      <div class="wall" id="wall" data-label="Batas 25%"></div>
+    </div>
+    <div class="meter-scale num" id="meterScale"></div>
+    <div class="budget-msg ok" id="budgetMsg">Belum ada posisi. Isi kalkulator di bawah untuk merencanakan entry.</div>
+  </section>
+
+  <div class="grid">
+    <!-- Calculator -->
+    <section class="card">
+      <h2>Rencana entry</h2>
+      <p class="sub">Masukkan setup Anda. Hasil dihitung otomatis.</p>
+
+      <div class="field">
+        <label for="symInput">Pair / simbol</label>
+        <div class="combo">
+          <input type="text" id="symInput" class="num" autocomplete="off" placeholder="Cari: EURUSD, XAUUSD, US30…">
+          <div class="combo-list" id="symList" role="listbox"></div>
+        </div>
+        <span class="hint" id="symInfo"></span>
+      </div>
+
+      <div class="field">
+        <label>Arah posisi</label>
+        <div class="dir">
+          <button class="buy on" id="dirBuy" type="button">Buy</button>
+          <button class="sell" id="dirSell" type="button">Sell</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="lot">Lot</label>
+        <div class="lotrow">
+          <button class="step" type="button" data-lot="-1" aria-label="Kurangi lot">−</button>
+          <input type="number" id="lot" class="num" step="0.01" min="0.01" value="0.01">
+          <button class="step" type="button" data-lot="1" aria-label="Tambah lot">+</button>
+        </div>
+      </div>
+
+      <div class="row3">
+        <div class="field"><label for="entry">Harga entry</label><input type="number" id="entry" class="num" step="any"></div>
+        <div class="field"><label for="sl">Stop loss</label><input type="number" id="sl" class="num" step="any"></div>
+        <div class="field"><label for="tp">Take profit</label><input type="number" id="tp" class="num" step="any"></div>
+      </div>
+      <p class="hint err" id="calcErr"></p>
+
+      <div class="row">
+        <div class="field"><label for="slPips">Atau SL dalam pip</label><input type="number" id="slPips" class="num" step="any" placeholder="mis. 20"></div>
+        <div class="field"><label for="tpPips">Atau TP dalam pip</label><input type="number" id="tpPips" class="num" step="any" placeholder="mis. 40"></div>
+      </div>
+
+      <div class="field"><label for="note">Catatan setup (opsional)</label><input type="text" id="note" placeholder="mis. Breakout H4, konfirmasi London open"></div>
+
+      <hr style="border:0;border-top:1px solid var(--line);margin:8px 0 18px">
+
+      <h2>Hitung lot dari risiko</h2>
+      <p class="sub">Tentukan berapa yang siap Anda rugikan, lalu lot dihitung dari jarak SL di atas.</p>
+      <div class="row">
+        <div class="field"><label for="riskMode">Satuan risiko</label>
+          <select id="riskMode"><option value="pct">% dari modal</option><option value="amt">Nominal</option></select></div>
+        <div class="field"><label for="riskVal">Besar risiko</label><input type="number" id="riskVal" class="num" step="any" value="1"></div>
+      </div>
+      <div class="sizer-out">
+        <div><span class="hint">Lot disarankan</span><br><b class="num" id="sizerLot">—</b> <span class="hint" id="sizerAmt"></span></div>
+        <button class="btn" id="useLot" type="button">Pakai lot ini</button>
+      </div>
+    </section>
+
+    <!-- Ticket -->
+    <aside class="card ticket" aria-live="polite">
+      <div class="ticket-head">
+        <span class="sym" id="tSym">—</span>
+        <span class="badge buy" id="tDir">BUY 0.01</span>
+      </div>
+      <div class="pl">
+        <div class="plbox loss"><span>Jika kena SL</span><b class="num" id="tLoss">—</b><em class="num" id="tLossPct">—</em></div>
+        <div class="plbox win"><span>Jika kena TP</span><b class="num" id="tWin">—</b><em class="num" id="tWinPct">—</em></div>
+      </div>
+      <div class="rr">
+        <div class="rr-bar"><i id="rrRisk" style="background:var(--sell);width:50%"></i><i id="rrRew" style="background:var(--buy);width:50%"></i></div>
+        <div class="rr-lbl"><span>Risk</span><span class="num" id="rrTxt">R:R —</span><span>Reward</span></div>
+      </div>
+      <dl class="kv">
+        <dt>Jarak SL</dt><dd class="num" id="tSlPips">—</dd>
+        <dt>Jarak TP</dt><dd class="num" id="tTpPips">—</dd>
+        <dt>Nilai per pip</dt><dd class="num" id="tPipVal">—</dd>
+        <dt>Margin dibutuhkan</dt><dd class="num" id="tMargin">—</dd>
+        <dt>Win rate impas</dt><dd class="num" id="tBE">—</dd>
+        <dt>Total risiko setelah entry</dt><dd class="num" id="tAfter">—</dd>
+      </dl>
+      <ul class="checks" id="checks"></ul>
+      <button class="btn primary" id="addPos" type="button" style="width:100%">Tambahkan ke posisi aktif</button>
+    </aside>
+
+    <!-- Positions -->
+    <section class="card full">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div><h2>Posisi aktif</h2><p class="sub" style="margin:0">Semua SL di sini dijumlahkan ke meter risiko.</p></div>
+        <button class="btn sm danger" id="clearPos" type="button">Hapus semua</button>
+      </div>
+      <div class="tbl-wrap" style="margin-top:12px">
+        <table>
+          <thead><tr><th>Simbol</th><th>Arah</th><th>Lot</th><th>Entry</th><th>SL</th><th>TP</th><th>Risiko</th><th>Target</th><th>R:R</th><th>Tutup sebagai</th></tr></thead>
+          <tbody id="posBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Journal -->
+    <section class="card full">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div><h2>Jurnal &amp; statistik</h2><p class="sub" style="margin:0">Posisi yang ditutup tercatat di sini.</p></div>
+        <div class="actions"><button class="btn sm" id="exportCsv" type="button">Ekspor CSV</button><button class="btn sm danger" id="clearHist" type="button">Hapus jurnal</button></div>
+      </div>
+      <div class="stats" style="margin-top:14px">
+        <div class="stat"><span>Total trade</span><b class="num" id="sTotal">0</b></div>
+        <div class="stat"><span>Win rate</span><b class="num" id="sWr">—</b></div>
+        <div class="stat"><span>Net P/L</span><b class="num" id="sNet">—</b></div>
+        <div class="stat"><span>Profit factor</span><b class="num" id="sPf">—</b></div>
+      </div>
+      <svg class="curve" id="curve" viewBox="0 0 600 90" preserveAspectRatio="none" aria-label="Kurva ekuitas"></svg>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Waktu</th><th>Simbol</th><th>Arah</th><th>Lot</th><th>Entry</th><th>Exit</th><th>Hasil</th><th>P/L</th><th>Catatan</th><th></th></tr></thead>
+          <tbody id="histBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <footer>RiskDesk menyimpan data di browser ini saja. Cocokkan contract size di MT5 (klik kanan simbol → Specification) dengan menu Admin → Simbol.</footer>
+</div>
+
+<!-- Admin modal -->
+<div class="modal" id="adminModal" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
+  <div class="modal-box">
+    <div class="modal-head"><h2 id="adminTitle">Panel admin</h2><button class="btn ghost sm" id="closeAdmin" type="button">Tutup ✕</button></div>
+
+    <div id="pinView" class="pin-box">
+      <p class="c-muted">Masukkan PIN admin. PIN bawaan: <b class="num">1234</b></p>
+      <input type="password" id="pinInput" inputmode="numeric" maxlength="8" autocomplete="off">
+      <p class="hint err" id="pinErr"></p>
+      <button class="btn primary" id="pinBtn" type="button" style="width:100%">Masuk</button>
+    </div>
+
+    <div id="adminView" hidden>
+      <div class="tabs" role="tablist">
+        <button class="on" data-tab="tAcc" type="button">Akun &amp; risiko</button>
+        <button data-tab="tRate" type="button">Kurs mata uang</button>
+        <button data-tab="tSym" type="button">Simbol</button>
+        <button data-tab="tSec" type="button">Keamanan &amp; data</button>
+      </div>
+
+      <div class="tabpane on" id="tAcc">
+        <div class="row">
+          <div class="field"><label for="aBal">Modal / balance</label><input type="number" id="aBal" class="num" step="any"></div>
+          <div class="field"><label for="aCcy">Mata uang akun</label><select id="aCcy"></select></div>
+        </div>
+        <div class="row3">
+          <div class="field"><label for="aLev">Leverage (1:x)</label><input type="number" id="aLev" class="num"></div>
+          <div class="field"><label for="aMax">Batas total risiko (%)</label><input type="number" id="aMax" class="num" step="0.5"></div>
+          <div class="field"><label for="aWarn">Peringatan dini di (% dari batas)</label><input type="number" id="aWarn" class="num"></div>
+        </div>
+        <div class="row3">
+          <div class="field"><label for="aPer">Maks risiko per trade (%)</label><input type="number" id="aPer" class="num" step="0.1"></div>
+          <div class="field"><label for="aMinRR">R:R minimum</label><input type="number" id="aMinRR" class="num" step="0.1"></div>
+          <div class="field"><label for="aLotStep">Langkah lot</label><input type="number" id="aLotStep" class="num" step="0.01"></div>
+        </div>
+        <div class="switch"><span>Tolak posisi baru jika total risiko melewati batas</span><input type="checkbox" id="aBlock"></div>
+        <div class="switch"><span>Bunyikan suara saat peringatan</span><input type="checkbox" id="aSound"></div>
+        <div class="switch"><span>Perbarui modal otomatis saat posisi ditutup</span><input type="checkbox" id="aAutoBal"></div>
+        <div class="switch"><span>Notifikasi browser (desktop)</span><input type="checkbox" id="aNotif"></div>
+        <div style="margin-top:16px;text-align:right"><button class="btn primary" id="saveAcc" type="button">Simpan pengaturan</button></div>
+      </div>
+
+      <div class="tabpane" id="tRate">
+        <p class="sub">Nilai 1 USD dalam tiap mata uang. Dipakai untuk mengonversi P/L pair non-USD ke mata uang akun.</p>
+        <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+          <button class="btn sm" id="fetchRates" type="button">Ambil kurs terbaru otomatis</button>
+          <span class="hint" id="rateInfo" style="align-self:center"></span>
+        </div>
+        <div class="row3" id="rateGrid"></div>
+        <div style="margin-top:12px;text-align:right"><button class="btn primary" id="saveRates" type="button">Simpan kurs</button></div>
+      </div>
+
+      <div class="tabpane" id="tSym">
+        <p class="sub">Contract size berbeda antar broker, terutama untuk indeks, minyak, dan kripto. Samakan dengan spesifikasi di MT5 Anda.</p>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <input type="text" id="symFilter" placeholder="Filter simbol…" style="max-width:220px">
+          <button class="btn sm" id="addSym" type="button">+ Tambah simbol</button>
+          <button class="btn sm" id="saveSyms" type="button">Simpan simbol</button>
+          <button class="btn sm danger" id="resetSyms" type="button">Kembalikan bawaan</button>
+        </div>
+        <div class="tbl-wrap" style="max-height:420px;overflow:auto">
+          <table class="symtbl">
+            <thead><tr><th>Simbol</th><th>Kategori</th><th>Contract size</th><th>Ukuran pip</th><th>Digit</th><th>Mata uang kutipan</th><th></th></tr></thead>
+            <tbody id="symBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tabpane" id="tSec">
+        <div class="row">
+          <div class="field"><label for="newPin">PIN admin baru</label><input type="password" id="newPin" inputmode="numeric" maxlength="8"></div>
+          <div class="field"><label>&nbsp;</label><button class="btn" id="savePin" type="button">Ganti PIN</button></div>
+        </div>
+        <p class="hint">PIN ini hanya mengunci menu admin di browser ini, bukan pengamanan server.</p>
+        <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn" id="backup" type="button">Unduh backup (JSON)</button>
+          <label class="btn" for="restore" style="cursor:pointer">Pulihkan dari backup</label>
+          <input type="file" id="restore" accept="application/json" hidden>
+          <button class="btn danger" id="resetAll" type="button">Reset semua data</button>
+        </div>
+        <div style="margin-top:16px"><button class="btn ghost sm" id="logout" type="button">Keluar dari admin</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+(() => {
+"use strict";
+
+/* ---------- Default data ---------- */
+// [symbol, category, contractSize, pipSize, digits, quoteCurrency]
+const FX = (s, cat) => [s, cat, 100000, s.endsWith("JPY") ? 0.01 : 0.0001, s.endsWith("JPY") ? 3 : 5, s.slice(3)];
+const DEFAULT_SYMBOLS = [
+  ...["EURUSD","GBPUSD","USDJPY","USDCHF","USDCAD","AUDUSD","NZDUSD"].map(s=>FX(s,"Forex Major")),
+  ...["EURGBP","EURJPY","EURCHF","EURAUD","EURCAD","EURNZD","GBPJPY","GBPCHF","GBPAUD","GBPCAD","GBPNZD",
+      "AUDJPY","AUDCHF","AUDCAD","AUDNZD","NZDJPY","NZDCHF","NZDCAD","CADJPY","CADCHF","CHFJPY"].map(s=>FX(s,"Forex Minor")),
+  ...["USDSGD","USDHKD","USDZAR","USDMXN","USDTRY","USDNOK","USDSEK","USDPLN","USDCNH","USDDKK","USDHUF","USDCZK",
+      "EURTRY","EURNOK","EURSEK","EURPLN","EURZAR","EURHUF","GBPZAR","GBPSGD","AUDSGD","SGDJPY"].map(s=>FX(s,"Forex Exotic")),
+  ["XAUUSD","Logam",100,0.1,2,"USD"],["XAGUSD","Logam",5000,0.01,3,"USD"],["XAUEUR","Logam",100,0.1,2,"EUR"],
+  ["XPTUSD","Logam",100,0.1,2,"USD"],["XPDUSD","Logam",100,0.1,2,"USD"],
+  ["US30","Indeks",1,1,2,"USD"],["US500","Indeks",1,0.1,2,"USD"],["NAS100","Indeks",1,1,2,"USD"],["US2000","Indeks",1,0.1,2,"USD"],
+  ["GER40","Indeks",1,1,2,"EUR"],["UK100","Indeks",1,1,2,"GBP"],["FRA40","Indeks",1,1,2,"EUR"],["EU50","Indeks",1,1,2,"EUR"],
+  ["JP225","Indeks",100,1,0,"JPY"],["AUS200","Indeks",1,1,2,"AUD"],["HK50","Indeks",1,1,2,"HKD"],
+  ["USOIL","Energi",100,0.01,2,"USD"],["UKOIL","Energi",100,0.01,2,"USD"],["XNGUSD","Energi",10000,0.001,3,"USD"],
+  ["BTCUSD","Kripto",1,1,2,"USD"],["ETHUSD","Kripto",1,0.1,2,"USD"],["SOLUSD","Kripto",1,0.01,2,"USD"],
+  ["BNBUSD","Kripto",1,0.1,2,"USD"],["XRPUSD","Kripto",1,0.0001,4,"USD"],["LTCUSD","Kripto",1,0.01,2,"USD"],
+  ["ADAUSD","Kripto",1,0.0001,4,"USD"],["DOGEUSD","Kripto",1,0.00001,5,"USD"]
+].map(([s,c,cs,pip,d,q]) => ({s,c,cs,pip,d,q}));
+
+// 1 USD = x currency (perkiraan; perbarui di Admin)
+const DEFAULT_RATES = {USD:1,EUR:0.86,GBP:0.74,JPY:147,CHF:0.80,CAD:1.38,AUD:1.52,NZD:1.70,SGD:1.29,HKD:7.80,
+  ZAR:17.6,MXN:18.6,TRY:41.5,NOK:10.1,SEK:9.5,PLN:3.65,CNH:7.15,DKK:6.4,HUF:340,CZK:21,IDR:16400};
+
+const DEFAULT_SETTINGS = {balance:1000,ccy:"USD",leverage:500,maxRisk:25,warnAt:80,perTrade:2,minRR:1.5,lotStep:0.01,
+  block:true,sound:true,autoBal:true,notif:false,pin:hash("1234")};
+
+const SEG_COLORS = ["#E0B04B","#5AA9E6","#B57BEA","#2BC4A0","#F0616D","#F2A33A","#7FD1D9","#E77FB3"];
+
+/* ---------- Storage ---------- */
+const KEY = "riskdesk.v1";
+let S = load();
+function load(){
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(KEY)); } catch(e) {}
+  return {
+    settings: {...DEFAULT_SETTINGS, ...(d && d.settings)},
+    rates: {...DEFAULT_RATES, ...(d && d.rates)},
+    symbols: (d && Array.isArray(d.symbols) && d.symbols.length) ? d.symbols : DEFAULT_SYMBOLS.map(x=>({...x})),
+    positions: (d && d.positions) || [],
+    history: (d && d.history) || [],
+    last: (d && d.last) || {sym:"XAUUSD"}
+  };
+}
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) { toast("Gagal menyimpan","Penyimpanan browser penuh atau diblokir.","danger"); } }
+function hash(str){ let h=5381; for (const ch of String(str)) h=((h<<5)+h+ch.charCodeAt(0))|0; return "h"+(h>>>0).toString(36); }
+
+/* ---------- Helpers ---------- */
+const $ = id => document.getElementById(id);
+const num = v => { const n = parseFloat(String(v).replace(",", ".")); return isFinite(n) ? n : NaN; };
+const ccySym = c => ({USD:"$",EUR:"€",GBP:"£",JPY:"¥",IDR:"Rp "}[c] || c+" ");
+const fmt = (v, dec=2) => isFinite(v) ? v.toLocaleString("id-ID",{minimumFractionDigits:dec,maximumFractionDigits:dec}) : "—";
+const money = v => isFinite(v) ? (v<0?"−":"") + ccySym(S.settings.ccy) + fmt(Math.abs(v), S.settings.ccy==="IDR"||S.settings.ccy==="JPY"?0:2) : "—";
+const pct = v => isFinite(v) ? fmt(v,2)+"%" : "—";
+const getSym = s => S.symbols.find(x => x.s === s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function toAcct(valQuote, q){
+  const rq = S.rates[q], ra = S.rates[S.settings.ccy];
+  if (!rq || !ra) return NaN;
+  return valQuote / rq * ra;
+}
+
+/* ---------- Core calculation ---------- */
+function calc(p){
+  const sym = getSym(p.sym);
+  if (!sym) return null;
+  const sign = p.dir === "buy" ? 1 : -1;
+  const r = {sym};
+  const unit = sym.cs * p.lot;
+  r.pipVal = toAcct(sym.pip * unit, sym.q);
+  r.margin = toAcct(unit * p.entry / S.settings.leverage, sym.q);
+  if (isFinite(p.sl)) {
+    r.slDist = Math.abs(p.entry - p.sl);
+    r.slPips = r.slDist / sym.pip;
+    r.loss = toAcct((p.sl - p.entry) * sign * unit, sym.q); // negatif bila valid
+    r.slOk = (p.sl - p.entry) * sign < 0;
+  }
+  if (isFinite(p.tp)) {
+    r.tpDist = Math.abs(p.tp - p.entry);
+    r.tpPips = r.tpDist / sym.pip;
+    r.win = toAcct((p.tp - p.entry) * sign * unit, sym.q);
+    r.tpOk = (p.tp - p.entry) * sign > 0;
+  }
+  if (r.slDist && r.tpDist) r.rr = r.tpDist / r.slDist;
+  r.risk = r.slOk ? Math.abs(r.loss) : (isFinite(p.sl) ? 0 : NaN);
+  return r;
+}
+const totalRisk = () => S.positions.reduce((a,p) => { const r = calc(p); return a + (r && isFinite(r.risk) ? r.risk : 0); }, 0);
+
+/* ---------- Form state ---------- */
+let dir = "buy";
+let curSym = getSym(S.last.sym) ? S.last.sym : S.symbols[0].s;
+
+function readForm(){
+  return {sym:curSym, dir, lot:num($("lot").value), entry:num($("entry").value), sl:num($("sl").value), tp:num($("tp").value), note:$("note").value.trim()};
+}
+
+/* ---------- Symbol combobox ---------- */
+const symInput = $("symInput"), symList = $("symList");
+let comboIdx = -1;
+function renderCombo(q=""){
+  q = q.toUpperCase().trim();
+  const items = S.symbols.filter(x => !q || x.s.includes(q) || x.c.toUpperCase().includes(q));
+  const groups = {};
+  items.forEach(x => (groups[x.c] = groups[x.c] || []).push(x));
+  let html = "", i = 0;
+  for (const g in groups) {
+    html += `<div class="combo-group">${esc(g)}</div>`;
+    groups[g].forEach(x => { html += `<div class="combo-item" role="option" data-s="${esc(x.s)}" data-i="${i++}">${esc(x.s)}<span>${esc(x.q)}</span></div>`; });
+  }
+  symList.innerHTML = html || `<div class="empty">Simbol tidak ditemukan. Tambahkan di Admin → Simbol.</div>`;
+  comboIdx = -1;
+}
+function pickSym(s){
+  curSym = s; S.last.sym = s; save();
+  symInput.value = s; symList.classList.remove("open");
+  const sym = getSym(s);
+  ["entry","sl","tp"].forEach(id => $(id).step = Math.pow(10,-sym.d));
+  $("symInfo").textContent = `Contract ${fmt(sym.cs,0)} · 1 pip = ${sym.pip} · kutipan ${sym.q}`;
+  update();
+}
+symInput.addEventListener("focus", () => { renderCombo(""); symInput.select(); symList.classList.add("open"); });
+symInput.addEventListener("input", () => { renderCombo(symInput.value); symList.classList.add("open"); });
+symInput.addEventListener("keydown", e => {
+  const its = [...symList.querySelectorAll(".combo-item")];
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    comboIdx = Math.max(0, Math.min(its.length-1, comboIdx + (e.key==="ArrowDown"?1:-1)));
+    its.forEach((el,i) => el.classList.toggle("act", i===comboIdx));
+    its[comboIdx] && its[comboIdx].scrollIntoView({block:"nearest"});
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    const el = its[comboIdx] || its[0]; if (el) pickSym(el.dataset.s);
+  } else if (e.key === "Escape") { symList.classList.remove("open"); symInput.value = curSym; }
+});
+symList.addEventListener("mousedown", e => { const el = e.target.closest(".combo-item"); if (el) { e.preventDefault(); pickSym(el.dataset.s); } });
+symInput.addEventListener("blur", () => setTimeout(() => { symList.classList.remove("open"); symInput.value = curSym; }, 120));
+
+/* ---------- Inputs ---------- */
+function setDir(d){ dir = d; $("dirBuy").classList.toggle("on", d==="buy"); $("dirSell").classList.toggle("on", d==="sell"); update(); }
+$("dirBuy").onclick = () => setDir("buy");
+$("dirSell").onclick = () => setDir("sell");
+document.querySelectorAll("[data-lot]").forEach(b => b.onclick = () => {
+  const st = S.settings.lotStep || 0.01;
+  const v = Math.max(st, (num($("lot").value) || 0) + st * +b.dataset.lot);
+  $("lot").value = +v.toFixed(2); update();
+});
+["lot","entry","sl","tp","note","riskVal"].forEach(id => $(id).addEventListener("input", update));
+$("riskMode").addEventListener("change", update);
+
+function pipsToPrice(which){
+  const sym = getSym(curSym), e = num($("entry").value), p = num($(which+"Pips").value);
+  if (!isFinite(e) || !isFinite(p)) return;
+  const sign = (dir==="buy") === (which==="tp") ? 1 : -1;
+  $(which).value = (e + sign * p * sym.pip).toFixed(sym.d);
+  update();
+}
+$("slPips").addEventListener("input", () => pipsToPrice("sl"));
+$("tpPips").addEventListener("input", () => pipsToPrice("tp"));
+
+/* ---------- Render ticket ---------- */
+let lastSizerLot = NaN;
+function update(){
+  const p = readForm(), st = S.settings, sym = getSym(curSym);
+  $("tSym").textContent = curSym;
+  $("tDir").textContent = `${dir.toUpperCase()} ${isFinite(p.lot)?p.lot:"—"}`;
+  $("tDir").className = "badge " + dir;
+
+  const errs = [];
+  const ready = isFinite(p.lot) && p.lot > 0 && isFinite(p.entry) && p.entry > 0;
+  const r = ready ? calc(p) : null;
+  $("sl").classList.toggle("bad", !!(r && isFinite(p.sl) && !r.slOk));
+  $("tp").classList.toggle("bad", !!(r && isFinite(p.tp) && !r.tpOk));
+  if (r && isFinite(p.sl) && !r.slOk) errs.push(dir==="buy" ? "SL untuk Buy harus di bawah harga entry." : "SL untuk Sell harus di atas harga entry.");
+  if (r && isFinite(p.tp) && !r.tpOk) errs.push(dir==="buy" ? "TP untuk Buy harus di atas harga entry." : "TP untuk Sell harus di bawah harga entry.");
+  $("calcErr").textContent = errs.join(" ");
+
+  const bal = st.balance;
+  $("tLoss").textContent = r && isFinite(r.loss) ? money(r.loss) : "—";
+  $("tLossPct").textContent = r && isFinite(r.loss) ? `${pct(Math.abs(r.loss)/bal*100)} modal` : "Isi entry & SL";
+  $("tWin").textContent = r && isFinite(r.win) ? money(r.win) : "—";
+  $("tWinPct").textContent = r && isFinite(r.win) ? `${pct(r.win/bal*100)} modal` : "Isi entry & TP";
+  $("tSlPips").textContent = r && isFinite(r.slPips) ? `${fmt(r.slPips,1)} pip` : "—";
+  $("tTpPips").textContent = r && isFinite(r.tpPips) ? `${fmt(r.tpPips,1)} pip` : "—";
+  $("tPipVal").textContent = r ? money(r.pipVal) : "—";
+  $("tMargin").textContent = r ? `${money(r.margin)} (1:${st.leverage})` : "—";
+
+  const rr = r && r.slOk && r.tpOk ? r.rr : NaN;
+  $("rrTxt").textContent = isFinite(rr) ? `R:R 1 : ${fmt(rr,2)}` : "R:R —";
+  const rp = isFinite(rr) ? 100/(1+rr) : 50;
+  $("rrRisk").style.width = rp+"%"; $("rrRew").style.width = (100-rp)+"%";
+  $("tBE").textContent = isFinite(rr) ? pct(100/(1+rr)) : "—";
+
+  const used = totalRisk();
+  const newRisk = r && r.slOk ? r.risk : 0;
+  const after = (used + newRisk) / bal * 100;
+  $("tAfter").textContent = r && r.slOk ? pct(after) : "—";
+
+  // checklist
+  const checks = [];
+  if (r && r.slOk) {
+    const tr = r.risk/bal*100;
+    checks.push([tr <= st.perTrade ? "" : "bad", `Risiko trade ini ${pct(tr)} (maks ${st.perTrade}%)`]);
+    checks.push([after < st.maxRisk*st.warnAt/100 ? "" : after < st.maxRisk ? "mid" : "bad", `Total risiko jadi ${pct(after)} dari batas ${st.maxRisk}%`]);
+  }
+  if (isFinite(rr)) checks.push([rr >= st.minRR ? "" : "mid", `R:R 1:${fmt(rr,2)} (minimum 1:${st.minRR})`]);
+  if (r && isFinite(r.margin)) checks.push([r.margin <= bal*0.5 ? "" : "mid", `Margin ${pct(r.margin/bal*100)} dari modal`]);
+  if (r && !isFinite(p.sl)) checks.push(["bad","Belum ada stop loss — risiko tidak terbatas"]);
+  $("checks").innerHTML = checks.map(([c,t]) => `<li class="${c}">${esc(t)}</li>`).join("");
+
+  const blocked = st.block && r && r.slOk && after > st.maxRisk;
+  $("addPos").disabled = !(r && r.slOk && (!isFinite(p.tp) || r.tpOk)) || blocked;
+  $("addPos").textContent = blocked ? `Diblokir: melewati batas ${st.maxRisk}%` : "Tambahkan ke posisi aktif";
+
+  // sizer
+  const rv = num($("riskVal").value);
+  const riskAmt = $("riskMode").value === "pct" ? bal * rv / 100 : rv;
+  lastSizerLot = NaN;
+  if (ready && isFinite(p.sl) && r.slOk && riskAmt > 0) {
+    const lossPerLot = Math.abs(toAcct(r.slDist * sym.cs, sym.q));
+    const step = st.lotStep || 0.01;
+    lastSizerLot = Math.floor(riskAmt / lossPerLot / step + 1e-9) * step;
+    lastSizerLot = +lastSizerLot.toFixed(2);
+    $("sizerLot").textContent = lastSizerLot >= step ? fmt(lastSizerLot,2) : "< " + step;
+    $("sizerAmt").textContent = lastSizerLot >= step ? `≈ risiko ${money(lastSizerLot*lossPerLot)}` : "SL terlalu lebar untuk risiko ini";
+  } else {
+    $("sizerLot").textContent = "—";
+    $("sizerAmt").textContent = "Isi entry & SL dulu";
+  }
+  $("useLot").disabled = !(lastSizerLot >= (st.lotStep||0.01));
+
+  renderBudget(r && r.slOk ? r.risk : 0);
+}
+$("useLot").onclick = () => { if (lastSizerLot > 0) { $("lot").value = lastSizerLot; update(); } };
+
+/* ---------- Budget meter ---------- */
+let lastLevel = "ok";
+function renderBudget(preview=0){
+  const st = S.settings, bal = st.balance;
+  const used = totalRisk(), usedPct = used/bal*100;
+  const scaleMax = Math.max(st.maxRisk * 1.4, usedPct + preview/bal*100 + 2);
+  $("riskPct").innerHTML = `${pct(usedPct)}<small>dari batas ${st.maxRisk}%</small>`;
+  $("riskPct").style.color = usedPct >= st.maxRisk ? "var(--sell)" : usedPct >= st.maxRisk*st.warnAt/100 ? "var(--warn)" : "var(--text)";
+  $("bBalance").textContent = money(bal);
+  $("bUsed").textContent = money(used);
+  $("bLeft").textContent = money(Math.max(0, bal*st.maxRisk/100 - used));
+  $("bCount").textContent = S.positions.length;
+
+  let segs = S.positions.map((p,i) => {
+    const r = calc(p); const w = r && isFinite(r.risk) ? r.risk/bal*100/scaleMax*100 : 0;
+    return `<div class="seg" title="${esc(p.sym)} ${p.dir} ${p.lot} lot: ${money(r?r.risk:0)}" style="width:${w}%;background:${SEG_COLORS[i%SEG_COLORS.length]}"></div>`;
+  }).join("");
+  if (preview > 0) segs += `<div class="seg preview" title="Rencana entry saat ini" style="width:${preview/bal*100/scaleMax*100}%"></div>`;
+  $("meterFill").innerHTML = segs;
+  $("wall").style.left = (st.maxRisk/scaleMax*100)+"%";
+  $("wall").dataset.label = `Batas ${st.maxRisk}%`;
+  $("warnLine").style.left = (st.maxRisk*st.warnAt/100/scaleMax*100)+"%";
+  $("meterScale").innerHTML = [0,.25,.5,.75,1].map(f => `<span>${fmt(scaleMax*f,1)}%</span>`).join("");
+
+  const msg = $("budgetMsg");
+  let level = "ok", text;
+  if (!S.positions.length) text = "Belum ada posisi aktif. Isi kalkulator di bawah untuk merencanakan entry.";
+  else if (usedPct >= st.maxRisk) { level = "danger"; text = `⚠ Total SL sudah ${pct(usedPct)} dari modal — melewati batas ${st.maxRisk}%. Kurangi lot atau tutup posisi.`; }
+  else if (usedPct >= st.maxRisk*st.warnAt/100) { level = "warn"; text = `Mendekati batas: total SL ${pct(usedPct)}. Sisa ruang risiko ${money(bal*st.maxRisk/100-used)}.`; }
+  else text = `Aman. Total SL ${pct(usedPct)} dari modal, masih di bawah batas ${st.maxRisk}%.`;
+  msg.className = "budget-msg " + level; msg.textContent = text;
+
+  if (level !== lastLevel && level !== "ok") alertLevel(level, usedPct);
+  lastLevel = level;
+}
+
+/* ---------- Alerts ---------- */
+function toast(title, body, kind=""){
+  const el = document.createElement("div");
+  el.className = "toast " + kind;
+  el.innerHTML = `<b>${esc(title)}</b>${esc(body)}`;
+  $("toasts").appendChild(el);
+  setTimeout(() => el.remove(), kind==="danger" ? 7000 : 4000);
+}
+let actx;
+function beep(danger){
+  if (!S.settings.sound) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const tones = danger ? [880,660,880] : [660];
+    tones.forEach((f,i) => {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.frequency.value = f; o.type = "sine";
+      g.gain.setValueAtTime(0.0001, actx.currentTime + i*0.18);
+      g.gain.exponentialRampToValueAtTime(0.2, actx.currentTime + i*0.18 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + i*0.18 + 0.16);
+      o.connect(g).connect(actx.destination); o.start(actx.currentTime + i*0.18); o.stop(actx.currentTime + i*0.18 + 0.17);
+    });
+  } catch(e) {}
+}
+function alertLevel(level, usedPct){
+  const st = S.settings;
+  const title = level==="danger" ? `Batas risiko ${st.maxRisk}% tersentuh` : "Mendekati batas risiko";
+  const body = `Total SL semua posisi = ${pct(usedPct)} dari modal.`;
+  toast(title, body, level); beep(level==="danger");
+  if (st.notif && "Notification" in window && Notification.permission === "granted") { try { new Notification("RiskDesk: " + title, {body}); } catch(e) {} }
+}
+
+/* ---------- Positions ---------- */
+$("addPos").onclick = () => {
+  const p = readForm(); const r = calc(p);
+  if (!r || !r.slOk) return;
+  p.id = Date.now().toString(36); p.time = new Date().toISOString();
+  S.positions.push(p); save();
+  toast("Posisi ditambahkan", `${p.sym} ${p.dir.toUpperCase()} ${p.lot} lot · risiko ${money(r.risk)}`, "ok");
+  renderPositions(); update();
+};
+function renderPositions(){
+  const body = $("posBody");
+  if (!S.positions.length) { body.innerHTML = `<tr><td colspan="10" class="empty">Belum ada posisi. Tambahkan dari kalkulator di atas.</td></tr>`; return; }
+  body.innerHTML = S.positions.map((p,i) => {
+    const r = calc(p), sym = getSym(p.sym), d = sym ? sym.d : 5;
+    const col = SEG_COLORS[i%SEG_COLORS.length];
+    return `<tr>
+      <td class="num"><span class="dot" style="background:${col}"></span>${esc(p.sym)}</td>
+      <td class="${p.dir==='buy'?'c-buy':'c-sell'}">${p.dir.toUpperCase()}</td>
+      <td class="num">${p.lot}</td>
+      <td class="num">${fmt(p.entry,d)}</td><td class="num">${fmt(p.sl,d)}</td><td class="num">${isFinite(p.tp)?fmt(p.tp,d):"—"}</td>
+      <td class="num c-sell">${r?money(-r.risk):"—"}</td>
+      <td class="num c-buy">${r&&isFinite(r.win)?money(r.win):"—"}</td>
+      <td class="num">${r&&isFinite(r.rr)?"1:"+fmt(r.rr,2):"—"}</td>
+      <td><div class="actions">
+        <button class="btn sm" data-close="tp" data-id="${p.id}" ${isFinite(p.tp)?"":"disabled"}>TP</button>
+        <button class="btn sm" data-close="sl" data-id="${p.id}">SL</button>
+        <button class="btn sm" data-close="manual" data-id="${p.id}">Manual</button>
+        <button class="btn sm ghost" data-close="del" data-id="${p.id}" aria-label="Hapus tanpa mencatat">✕</button>
+      </div></td></tr>`;
+  }).join("");
+}
+$("posBody").addEventListener("click", e => {
+  const b = e.target.closest("[data-close]"); if (!b) return;
+  const idx = S.positions.findIndex(p => p.id === b.dataset.id); if (idx < 0) return;
+  const p = S.positions[idx], mode = b.dataset.close;
+  if (mode === "del") { S.positions.splice(idx,1); save(); renderPositions(); update(); return; }
+  let exit = mode==="tp" ? p.tp : mode==="sl" ? p.sl : NaN;
+  if (mode === "manual") {
+    const v = prompt(`Harga penutupan ${p.sym}:`, p.entry); if (v === null) return;
+    exit = num(v); if (!isFinite(exit)) { toast("Harga tidak valid","Masukkan angka harga penutupan.","danger"); return; }
+  }
+  const sym = getSym(p.sym), sign = p.dir==="buy"?1:-1;
+  const pnl = toAcct((exit - p.entry) * sign * sym.cs * p.lot, sym.q);
+  const r = calc(p);
+  S.history.unshift({...p, exit, pnl, risk:r?r.risk:NaN, result: mode==="tp"?"TP":mode==="sl"?"SL":"Manual", closed:new Date().toISOString()});
+  S.positions.splice(idx,1);
+  if (S.settings.autoBal) S.settings.balance = +(S.settings.balance + pnl).toFixed(2);
+  save();
+  toast(pnl>=0?"Posisi ditutup profit":"Posisi ditutup rugi", `${p.sym}: ${money(pnl)}`, pnl>=0?"ok":"warn");
+  renderPositions(); renderHistory(); update();
+});
+$("clearPos").onclick = () => { if (S.positions.length && confirm("Hapus semua posisi aktif tanpa mencatat ke jurnal?")) { S.positions = []; save(); renderPositions(); update(); } };
+
+/* ---------- History ---------- */
+function renderHistory(){
+  const H = S.history, body = $("histBody");
+  const wins = H.filter(h => h.pnl > 0), losses = H.filter(h => h.pnl < 0);
+  const gw = wins.reduce((a,h)=>a+h.pnl,0), gl = Math.abs(losses.reduce((a,h)=>a+h.pnl,0));
+  const net = gw - gl;
+  $("sTotal").textContent = H.length;
+  $("sWr").textContent = H.length ? pct(wins.length/H.length*100) : "—";
+  $("sNet").textContent = H.length ? money(net) : "—";
+  $("sNet").className = "num " + (net>0?"c-buy":net<0?"c-sell":"");
+  $("sPf").textContent = gl ? fmt(gw/gl,2) : (gw ? "∞" : "—");
+
+  // equity curve
+  const pts = [0]; [...H].reverse().forEach(h => pts.push(pts[pts.length-1] + h.pnl));
+  const svg = $("curve");
+  if (pts.length < 2) { svg.innerHTML = `<text x="300" y="50" text-anchor="middle" fill="#8A9AB5" font-size="13" font-family="Manrope,sans-serif">Kurva ekuitas muncul setelah trade pertama ditutup</text>`; }
+  else {
+    const mn = Math.min(...pts), mx = Math.max(...pts), rg = (mx-mn)||1;
+    const xy = pts.map((v,i) => [i/(pts.length-1)*600, 82 - (v-mn)/rg*74]);
+    const line = xy.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+","+p[1].toFixed(1)).join("");
+    const zero = 82 - (0-mn)/rg*74;
+    const c = pts[pts.length-1] >= 0 ? "#2BC4A0" : "#F0616D";
+    svg.innerHTML = `<line x1="0" x2="600" y1="${zero}" y2="${zero}" stroke="#33476B" stroke-dasharray="4 4"/>
+      <path d="${line}L600,90L0,90Z" fill="${c}" opacity=".12"/><path d="${line}" fill="none" stroke="${c}" stroke-width="2" vector-effect="non-scaling-stroke"/>`;
+  }
+
+  if (!H.length) { body.innerHTML = `<tr><td colspan="10" class="empty">Jurnal kosong. Tutup posisi aktif lewat tombol TP, SL, atau Manual.</td></tr>`; return; }
+  body.innerHTML = H.map((h,i) => {
+    const d = (getSym(h.sym)||{d:5}).d;
+    return `<tr><td class="c-muted">${new Date(h.closed).toLocaleString("id-ID",{dateStyle:"short",timeStyle:"short"})}</td>
+      <td class="num">${esc(h.sym)}</td><td class="${h.dir==='buy'?'c-buy':'c-sell'}">${h.dir.toUpperCase()}</td>
+      <td class="num">${h.lot}</td><td class="num">${fmt(h.entry,d)}</td><td class="num">${fmt(h.exit,d)}</td>
+      <td>${h.result}</td><td class="num ${h.pnl>=0?'c-buy':'c-sell'}">${money(h.pnl)}</td>
+      <td class="c-muted" style="white-space:normal;min-width:140px">${esc(h.note)}</td>
+      <td><button class="btn sm ghost" data-hdel="${i}" aria-label="Hapus catatan">✕</button></td></tr>`;
+  }).join("");
+}
+$("histBody").addEventListener("click", e => {
+  const b = e.target.closest("[data-hdel]"); if (!b) return;
+  S.history.splice(+b.dataset.hdel,1); save(); renderHistory();
+});
+$("clearHist").onclick = () => { if (S.history.length && confirm("Hapus seluruh jurnal?")) { S.history = []; save(); renderHistory(); } };
+$("exportCsv").onclick = () => {
+  if (!S.history.length) { toast("Jurnal kosong","Belum ada data untuk diekspor."); return; }
+  const rows = [["closed","symbol","direction","lot","entry","sl","tp","exit","result","pnl","note"]];
+  S.history.forEach(h => rows.push([h.closed,h.sym,h.dir,h.lot,h.entry,h.sl,h.tp,h.exit,h.result,(+h.pnl).toFixed(2),h.note||""]));
+  download("riskdesk-jurnal.csv", rows.map(r => r.map(v => `"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\n"), "text/csv");
+};
+function download(name, content, type){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([content],{type}));
+  a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+/* ---------- Sessions & clock ---------- */
+const SESS = [["Sydney",21,6],["Tokyo",0,9],["London",7,16],["New York",12,21]];
+function tick(){
+  const now = new Date(), h = now.getUTCHours() + now.getUTCMinutes()/60;
+  $("sessions").innerHTML = SESS.map(([n,a,b]) => {
+    const on = a < b ? (h >= a && h < b) : (h >= a || h < b);
+    return `<span class="sess ${on?'on':''}"><i></i>${n}</span>`;
+  }).join("");
+  $("clock").textContent = now.toLocaleTimeString("id-ID",{timeZone:"Asia/Jakarta",hour:"2-digit",minute:"2-digit"}) + " WIB";
+}
+
+/* ---------- Admin ---------- */
+const modal = $("adminModal");
+let authed = false;
+$("btnAdmin").onclick = () => { modal.classList.add("open"); showAdmin(); };
+$("closeAdmin").onclick = () => modal.classList.remove("open");
+modal.addEventListener("click", e => { if (e.target === modal) modal.classList.remove("open"); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") modal.classList.remove("open"); });
+function showAdmin(){
+  $("pinView").hidden = authed; $("adminView").hidden = !authed;
+  if (!authed) { $("pinInput").value = ""; $("pinErr").textContent = ""; setTimeout(() => $("pinInput").focus(), 50); }
+  else fillAdmin();
+}
+function tryPin(){
+  if (hash($("pinInput").value) === S.settings.pin) { authed = true; showAdmin(); }
+  else { $("pinErr").textContent = "PIN salah. Coba lagi."; $("pinInput").select(); }
+}
+$("pinBtn").onclick = tryPin;
+$("pinInput").addEventListener("keydown", e => { if (e.key === "Enter") tryPin(); });
+$("logout").onclick = () => { authed = false; showAdmin(); };
+
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x===b));
+  document.querySelectorAll(".tabpane").forEach(p => p.classList.toggle("on", p.id===b.dataset.tab));
+});
+
+function fillAdmin(){
+  const st = S.settings;
+  $("aBal").value = st.balance; $("aLev").value = st.leverage; $("aMax").value = st.maxRisk; $("aWarn").value = st.warnAt;
+  $("aPer").value = st.perTrade; $("aMinRR").value = st.minRR; $("aLotStep").value = st.lotStep;
+  $("aBlock").checked = st.block; $("aSound").checked = st.sound; $("aAutoBal").checked = st.autoBal; $("aNotif").checked = st.notif;
+  $("aCcy").innerHTML = Object.keys(S.rates).map(c => `<option ${c===st.ccy?"selected":""}>${c}</option>`).join("");
+  $("rateGrid").innerHTML = Object.entries(S.rates).filter(([c])=>c!=="USD").map(([c,v]) =>
+    `<div class="field"><label for="r_${c}">1 USD = … ${c}</label><input type="number" class="num" id="r_${c}" data-rate="${c}" step="any" value="${v}"></div>`).join("");
+  renderSymAdmin();
+}
+$("saveAcc").onclick = () => {
+  const st = S.settings, g = id => num($(id).value);
+  const vals = {balance:g("aBal"),leverage:g("aLev"),maxRisk:g("aMax"),warnAt:g("aWarn"),perTrade:g("aPer"),minRR:g("aMinRR"),lotStep:g("aLotStep")};
+  for (const [k,v] of Object.entries(vals)) if (!(v > 0)) { toast("Nilai tidak valid", `Isian "${k}" harus angka lebih dari 0.`, "danger"); return; }
+  Object.assign(st, vals, {ccy:$("aCcy").value, block:$("aBlock").checked, sound:$("aSound").checked, autoBal:$("aAutoBal").checked, notif:$("aNotif").checked});
+  if (st.notif && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
+  save(); lastLevel = "ok"; renderPositions(); renderHistory(); update();
+  toast("Pengaturan disimpan","Kalkulator memakai nilai baru.","ok");
+};
+$("saveRates").onclick = () => {
+  document.querySelectorAll("[data-rate]").forEach(i => { const v = num(i.value); if (v > 0) S.rates[i.dataset.rate] = v; });
+  save(); update(); renderPositions(); toast("Kurs disimpan","Konversi P/L diperbarui.","ok");
+};
+$("fetchRates").onclick = async () => {
+  $("rateInfo").textContent = "Mengambil kurs…";
+  try {
+    const res = await fetch("https://open.er-api.com/v6/latest/USD");
+    const j = await res.json();
+    if (j.result !== "success") throw new Error();
+    let n = 0;
+    Object.keys(S.rates).forEach(c => { const k = c==="CNH" ? "CNY" : c; if (j.rates[k]) { S.rates[c] = +j.rates[k].toFixed(4); n++; } });
+    save(); fillAdmin(); update(); renderPositions();
+    $("rateInfo").textContent = `${n} kurs diperbarui (${new Date(j.time_last_update_unix*1000).toLocaleDateString("id-ID")}).`;
+  } catch(e) { $("rateInfo").textContent = "Gagal mengambil kurs. Isi manual dari MT5 (Market Watch)."; }
+};
+
+function renderSymAdmin(){
+  const q = $("symFilter").value.toUpperCase();
+  $("symBody").innerHTML = S.symbols.map((x,i) => (q && !x.s.includes(q) && !x.c.toUpperCase().includes(q)) ? "" :
+    `<tr data-i="${i}">
+      <td><input type="text" data-k="s" value="${esc(x.s)}" class="num"></td>
+      <td><input type="text" data-k="c" value="${esc(x.c)}"></td>
+      <td><input type="number" data-k="cs" value="${x.cs}" step="any" class="num"></td>
+      <td><input type="number" data-k="pip" value="${x.pip}" step="any" class="num"></td>
+      <td><input type="number" data-k="d" value="${x.d}" step="1" class="num" style="min-width:56px"></td>
+      <td><select data-k="q">${Object.keys(S.rates).map(c=>`<option ${c===x.q?"selected":""}>${c}</option>`).join("")}</select></td>
+      <td><button class="btn sm ghost" data-sdel="${i}" aria-label="Hapus simbol">✕</button></td></tr>`).join("");
+}
+$("symFilter").addEventListener("input", renderSymAdmin);
+$("symBody").addEventListener("change", e => {
+  const tr = e.target.closest("tr"), k = e.target.dataset.k; if (!tr || !k) return;
+  const x = S.symbols[+tr.dataset.i];
+  x[k] = (k==="s") ? e.target.value.toUpperCase().trim() : (k==="c"||k==="q") ? e.target.value : num(e.target.value);
+});
+$("symBody").addEventListener("click", e => {
+  const b = e.target.closest("[data-sdel]"); if (!b) return;
+  const x = S.symbols[+b.dataset.sdel];
+  if (S.symbols.length <= 1) return;
+  if (confirm(`Hapus simbol ${x.s}?`)) { S.symbols.splice(+b.dataset.sdel,1); if (curSym===x.s) curSym = S.symbols[0].s; save(); renderSymAdmin(); pickSym(curSym); }
+});
+$("addSym").onclick = () => { S.symbols.unshift({s:"NEWSYM",c:"Lainnya",cs:1,pip:0.01,d:2,q:"USD"}); $("symFilter").value=""; renderSymAdmin(); };
+$("saveSyms").onclick = () => {
+  const bad = S.symbols.find(x => !x.s || !(x.cs>0) || !(x.pip>0) || !(x.d>=0));
+  if (bad) { toast("Simbol belum lengkap", `Periksa ${bad.s||"(tanpa nama)"}: contract size, pip, dan digit harus terisi.`, "danger"); return; }
+  save(); if (!getSym(curSym)) curSym = S.symbols[0].s; pickSym(curSym); renderPositions();
+  toast("Simbol disimpan", `${S.symbols.length} simbol tersedia.`, "ok");
+};
+$("resetSyms").onclick = () => { if (confirm("Kembalikan daftar simbol ke bawaan? Perubahan Anda akan hilang.")) { S.symbols = DEFAULT_SYMBOLS.map(x=>({...x})); save(); renderSymAdmin(); pickSym(getSym(curSym)?curSym:"XAUUSD"); } };
+
+$("savePin").onclick = () => {
+  const v = $("newPin").value;
+  if (!/^\d{4,8}$/.test(v)) { toast("PIN tidak valid","Gunakan 4–8 angka.","danger"); return; }
+  S.settings.pin = hash(v); save(); $("newPin").value = ""; toast("PIN diganti","Gunakan PIN baru saat masuk admin.","ok");
+};
+$("backup").onclick = () => download(`riskdesk-backup-${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(S,null,2), "application/json");
+$("restore").onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const d = JSON.parse(rd.result);
+      if (!d.settings || !Array.isArray(d.symbols)) throw new Error();
+      localStorage.setItem(KEY, JSON.stringify(d)); S = load(); curSym = getSym(S.last.sym)?S.last.sym:S.symbols[0].s;
+      fillAdmin(); pickSym(curSym); renderPositions(); renderHistory();
+      toast("Backup dipulihkan","Semua data telah dimuat ulang.","ok");
+    } catch(err) { toast("File tidak dikenali","Pilih file backup JSON dari RiskDesk.","danger"); }
+    e.target.value = "";
+  };
+  rd.readAsText(f);
+};
+$("resetAll").onclick = () => {
+  if (!confirm("Reset semua data: pengaturan, simbol, posisi, dan jurnal? Tindakan ini tidak bisa dibatalkan.")) return;
+  try { localStorage.removeItem(KEY); } catch(e) {}
+  S = load(); curSym = "XAUUSD"; authed = false; modal.classList.remove("open");
+  pickSym(curSym); renderPositions(); renderHistory(); toast("Data direset","RiskDesk kembali ke pengaturan awal.","ok");
+};
+
+/* ---------- Init ---------- */
+$("lot").value = S.settings.lotStep >= 0.01 ? Math.max(0.01, S.settings.lotStep) : 0.01;
+pickSym(curSym);
+renderPositions(); renderHistory();
+lastLevel = (() => { const u = totalRisk()/S.settings.balance*100, st = S.settings; return u>=st.maxRisk?"danger":u>=st.maxRisk*st.warnAt/100?"warn":"ok"; })();
+update();
+tick(); setInterval(tick, 30000);
+})();
+</script>
+</body>
+</html>
