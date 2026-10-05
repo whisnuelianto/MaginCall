@@ -1417,8 +1417,8 @@ const Cloud = {
     const j = await this.req("/auth/v1/token?grant_type=password", { method: "POST", body: { email, password: pw }, auth: false });
     this.setSess(this.mkSess(j)); await this.afterLogin(true);
   },
-  async signUp(email, pw) {
-    const j = await this.req("/auth/v1/signup", { method: "POST", body: { email, password: pw }, auth: false });
+  async signUp(email, pw, invite) {
+    const j = await this.req("/auth/v1/signup", { method: "POST", body: { email, password: pw, data: { invite_code: invite || "" } }, auth: false });
     if (j && j.access_token) { this.setSess(this.mkSess(j)); await this.afterLogin(true); return true; }
     return false;
   },
@@ -1506,13 +1506,15 @@ async function cloudAuth(mode) {
   try {
     if (mode === "in") { await Cloud.signIn(email, pw); $("cloudMsg").textContent = "Berhasil masuk. Data tersinkron."; }
     else {
-      const ok = await Cloud.signUp(email, pw);
+      const ok = await Cloud.signUp(email, pw, $("cInvite").value.trim());
       $("cloudMsg").textContent = ok ? "Akun dibuat dan sudah masuk." : "Akun dibuat. Buka email Anda untuk konfirmasi, lalu tekan Masuk.";
     }
     $("cPass").value = "";
   } catch (e) {
     const m = e.message || "";
-    $("cloudMsg").textContent = /invalid login/i.test(m) ? "Email atau kata sandi salah." : /not confirmed/i.test(m) ? "Email belum dikonfirmasi. Cek kotak masuk Anda."
+    $("cloudMsg").textContent = mode === "up" && (/RISKDESK_INVITE_INVALID|database error saving new user/i.test(m) || e.status === 500) ? "Kode undangan salah. Minta kode yang benar ke pemilik situs."
+      : /already registered|already exists/i.test(m) ? "Email ini sudah terdaftar. Klik Masuk."
+      : /invalid login/i.test(m) ? "Email atau kata sandi salah." : /not confirmed/i.test(m) ? "Email belum dikonfirmasi. Cek kotak masuk Anda."
       : /relation|does not exist|schema cache/i.test(m) ? "Tabel belum dibuat. Jalankan supabase-setup.sql di SQL Editor."
       : /invalid path/i.test(m) ? "Project URL salah. Isi persis seperti https://abcdefgh.supabase.co tanpa tambahan apa pun, lalu Simpan koneksi."
       : /api key|apikey|jwt/i.test(m) ? "Key tidak cocok. Salin ulang publishable / anon key dari Project Settings → API Keys."
