@@ -1,11 +1,11 @@
 //+------------------------------------------------------------------+
 //|                                            RiskDesk_Bridge.mq5   |
-//|  Mengirim info akun dan posisi terbuka ke RiskDesk (Supabase).   |
+//|  Mengirim info akun, posisi terbuka & pending order ke RiskDesk. |
 //|  EA ini TIDAK membuka, mengubah, atau menutup posisi apa pun.    |
 //+------------------------------------------------------------------+
 #property copyright   "RiskDesk"
-#property version     "2.00"
-#property description "Kirim posisi terbuka MT5 ke RiskDesk secara berkala (hanya membaca, tidak trading)."
+#property version     "2.10"
+#property description "Kirim posisi terbuka dan pending order MT5 ke RiskDesk secara berkala (hanya membaca, tidak trading)."
 
 input string SupabaseUrl     = "https://xxxx.supabase.co"; // Project URL Supabase
 input string AnonKey         = "";                         // Anon / publishable key
@@ -68,10 +68,87 @@ string BaseUrl()
   }
 
 //+------------------------------------------------------------------+
-string BuildPositions(int &count)
+string PendingName(long t)
+  {
+   switch((int)t)
+     {
+      case ORDER_TYPE_BUY_LIMIT:       return("buy_limit");
+      case ORDER_TYPE_SELL_LIMIT:      return("sell_limit");
+      case ORDER_TYPE_BUY_STOP:        return("buy_stop");
+      case ORDER_TYPE_SELL_STOP:       return("sell_stop");
+      case ORDER_TYPE_BUY_STOP_LIMIT:  return("buy_stop_limit");
+      case ORDER_TYPE_SELL_STOP_LIMIT: return("sell_stop_limit");
+     }
+   return("");
+  }
+
+bool IsBuyType(long t)
+  {
+   return(t == ORDER_TYPE_BUY_LIMIT || t == ORDER_TYPE_BUY_STOP || t == ORDER_TYPE_BUY_STOP_LIMIT);
+  }
+
+// Pending order (limit / stop) ditambahkan ke array yang sama dengan "kind":"pending"
+void AppendPending(string &out, int &count, int &pend)
+  {
+   int total = OrdersTotal();
+   for(int i = 0; i < total; i++)
+     {
+      ulong ticket = OrderGetTicket(i);
+      if(ticket == 0) continue;
+      long   otype = OrderGetInteger(ORDER_TYPE);
+      string name  = PendingName(otype);
+      if(name == "") continue; // abaikan order market yang sedang diproses
+
+      string sym   = OrderGetString(ORDER_SYMBOL);
+      double vol   = OrderGetDouble(ORDER_VOLUME_CURRENT);
+      double price = OrderGetDouble(ORDER_PRICE_OPEN);
+      double slim  = OrderGetDouble(ORDER_PRICE_STOPLIMIT);
+      double sl    = OrderGetDouble(ORDER_SL);
+      double tp    = OrderGetDouble(ORDER_TP);
+      double cur   = OrderGetDouble(ORDER_PRICE_CURRENT);
+      long   setup = OrderGetInteger(ORDER_TIME_SETUP);
+      long   expir = OrderGetInteger(ORDER_TIME_EXPIRATION);
+      int    dg    = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+      bool   buy   = IsBuyType(otype);
+      // Untuk Stop Limit, harga eksekusi adalah harga limit-nya
+      double fill  = (slim > 0 && (otype == ORDER_TYPE_BUY_STOP_LIMIT || otype == ORDER_TYPE_SELL_STOP_LIMIT)) ? slim : price;
+
+      ENUM_ORDER_TYPE ot = buy ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+      string lossAtSl = "null", profitAtTp = "null";
+      double val = 0;
+      if(sl > 0 && OrderCalcProfit(ot, sym, vol, fill, sl, val)) lossAtSl = Num(val, 2);
+      if(tp > 0 && OrderCalcProfit(ot, sym, vol, fill, tp, val)) profitAtTp = Num(val, 2);
+
+      if(count > 0) out += ",";
+      out += "{";
+      out += "\"kind\":\"pending\",";
+      out += "\"ticket\":" + IntegerToString((long)ticket) + ",";
+      out += "\"symbol\":\"" + Esc(sym) + "\",";
+      out += "\"type\":\"" + (buy ? "buy" : "sell") + "\",";
+      out += "\"order_type\":\"" + name + "\",";
+      out += "\"volume\":" + Num(vol, 2) + ",";
+      out += "\"price_open\":" + Num(fill, dg) + ",";
+      out += "\"price_trigger\":" + Num(price, dg) + ",";
+      out += "\"sl\":" + Num(sl, dg) + ",";
+      out += "\"tp\":" + Num(tp, dg) + ",";
+      out += "\"price_current\":" + Num(cur, dg) + ",";
+      out += "\"profit\":0,\"swap\":0,";
+      out += "\"loss_at_sl\":" + lossAtSl + ",";
+      out += "\"profit_at_tp\":" + profitAtTp + ",";
+      out += "\"time\":" + IntegerToString(setup) + ",";
+      out += "\"expiration\":" + IntegerToString(expir);
+      out += "}";
+      count++;
+      pend++;
+     }
+  }
+
+//+------------------------------------------------------------------+
+string BuildPositions(int &count, int &pend)
   {
    string out = "[";
    count = 0;
+   pend = 0;
    int total = PositionsTotal();
    for(int i = 0; i < total; i++)
      {
@@ -100,6 +177,7 @@ string BuildPositions(int &count)
 
       if(count > 0) out += ",";
       out += "{";
+      out += "\"kind\":\"open\",";
       out += "\"ticket\":" + IntegerToString((long)ticket) + ",";
       out += "\"symbol\":\"" + Esc(sym) + "\",";
       out += "\"type\":\"" + (type == POSITION_TYPE_BUY ? "buy" : "sell") + "\",";
@@ -116,6 +194,7 @@ string BuildPositions(int &count)
       out += "}";
       count++;
      }
+   AppendPending(out, count, pend);
    out += "]";
    return(out);
   }
@@ -139,8 +218,8 @@ string BuildAccount()
 void Push()
   {
    g_lastPush = GetTickCount();
-   int n = 0;
-   string body = "{\"p_token\":\"" + Esc(SyncToken) + "\",\"p_account\":" + BuildAccount() + ",\"p_positions\":" + BuildPositions(n) + "}";
+   int n = 0, pend = 0;
+   string body = "{\"p_token\":\"" + Esc(SyncToken) + "\",\"p_account\":" + BuildAccount() + ",\"p_positions\":" + BuildPositions(n, pend) + "}";
 
    char data[];
    int len = StringToCharArray(body, data, 0, WHOLE_ARRAY, CP_UTF8);
@@ -173,7 +252,7 @@ void Push()
       else if(StringFind(resp, "false") >= 0)
          g_status = "SyncToken tidak dikenali. Salin ulang dari RiskDesk.";
       else
-         g_status = "Tersinkron " + TimeToString(TimeLocal(), TIME_MINUTES | TIME_SECONDS) + " | " + IntegerToString(n) + " posisi";
+         g_status = "Tersinkron " + TimeToString(TimeLocal(), TIME_MINUTES | TIME_SECONDS) + " | " + IntegerToString(n - pend) + " posisi, " + IntegerToString(pend) + " pending";
      }
    Comment("RiskDesk Bridge\n", g_status);
   }

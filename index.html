@@ -98,6 +98,16 @@
         </div>
 
         <div class="field">
+          <label>Jenis order</label>
+          <div class="seg3" role="group" aria-label="Jenis order">
+            <button type="button" data-ot="market" class="on">Market</button>
+            <button type="button" data-ot="limit">Limit</button>
+            <button type="button" data-ot="stop">Stop</button>
+          </div>
+          <span class="hint" id="otHint">Langsung dieksekusi di harga pasar.</span>
+        </div>
+
+        <div class="field">
           <label for="lot">Lot</label>
           <div class="lotrow">
             <button class="step" type="button" data-lot="-1" aria-label="Kurangi lot">−</button>
@@ -199,13 +209,14 @@
       </section>
       <section class="card" id="liveCard">
         <div class="card-head">
-          <div><h2>Posisi live dari MT5</h2><p class="sub" id="liveSub">Hubungkan MT5 lewat Pengaturan → Cloud &amp; MT5 agar posisi terbuka muncul otomatis.</p></div>
+          <div><h2>Posisi live &amp; pending order dari MT5</h2><p class="sub" id="liveSub">Hubungkan MT5 lewat Pengaturan → Cloud &amp; MT5 agar posisi terbuka muncul otomatis.</p></div>
           <span class="chip" id="liveChip"><i></i>Tidak terhubung</span>
         </div>
         <div class="kpis" id="liveAcct"></div>
+        <p class="hint" id="liveCount" style="margin-top:12px"></p>
         <div class="tbl-wrap" style="margin-top:12px">
           <table>
-            <thead><tr><th>Simbol</th><th>Arah</th><th>Lot</th><th>Entry</th><th>SL</th><th>TP</th><th>Floating</th><th>Risiko ke SL</th><th>Status</th></tr></thead>
+            <thead><tr><th>Simbol</th><th>Jenis</th><th>Arah</th><th>Lot</th><th>Entry</th><th>SL</th><th>TP</th><th>Floating</th><th>Risiko ke SL</th><th>Status</th></tr></thead>
             <tbody id="liveBody"></tbody>
           </table>
         </div>
@@ -471,6 +482,7 @@
             </div>
             <p class="hint">File EA: unduh <a href="RiskDesk_Bridge.mq5" download>RiskDesk_Bridge.mq5</a>.</p>
             <label class="switch"><span>Masukkan posisi live MT5 ke meter risiko</span><input type="checkbox" id="aLiveMeter"></label>
+            <label class="switch"><span>Hitung pending order (limit / stop) di meter risiko<small>Anggap semua pending order bisa terisi, sehingga total risiko tidak terlewat saat order tereksekusi.</small></span><input type="checkbox" id="aPendMeter"></label>
             <label class="switch"><span>Ikuti balance dari MT5<small>Modal di aplikasi otomatis disamakan dengan balance akun MT5.</small></span><input type="checkbox" id="aFollowBal"></label>
           </div>
           <p class="hint" id="cloudMsg" style="margin-top:10px"></p>

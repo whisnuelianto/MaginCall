@@ -5,7 +5,7 @@
 (() => {
 "use strict";
 
-const VERSION = "2.1.1";
+const VERSION = "2.2.0";
 const KEY = "riskdesk.v2", OLD_KEY = "riskdesk.v1", AUTH_KEY = "riskdesk.auth";
 
 /* ================================================================
@@ -43,7 +43,7 @@ const DEF_SET = {
   block:true, lossLock:true, corrWarn:true, newsWarn:true, autoBal:true, sound:true, notif:false,
   costs:true, comm:0,
   theme:"dark", onboarded:false, pin:"",
-  sb:{ url:"", key:"" }, liveInMeter:true, followMt5Bal:false,
+  sb:{ url:"", key:"" }, liveInMeter:true, pendInMeter:true, followMt5Bal:false,
   setups:["Breakout","Pullback","Reversal","Range","Trend follow","News"],
   emotions:["Tenang","Yakin","Ragu","FOMO","Balas dendam","Bosan"]
 };
@@ -62,6 +62,11 @@ const ALIASES = { GOLD:"XAUUSD", SILVER:"XAGUSD", DJ30:"US30", WS30:"US30", DJI:
   DE40:"GER40", GER30:"GER40", DAX40:"GER40", DE30:"GER40", XTIUSD:"USOIL", WTI:"USOIL", USOUSD:"USOIL", XBRUSD:"UKOIL", BRENT:"UKOIL",
   UKOUSD:"UKOIL", JPN225:"JP225", NIKKEI:"JP225", FTSE100:"UK100", F40:"FRA40", STOXX50:"EU50", EUSTX50:"EU50", HK33:"HK50", HSI:"HK50" };
 
+const OT_LABEL = { buy_limit:"Buy Limit", sell_limit:"Sell Limit", buy_stop:"Buy Stop", sell_stop:"Sell Stop", buy_stop_limit:"Buy Stop Limit", sell_stop_limit:"Sell Stop Limit" };
+/** Label jenis order untuk posisi manual (otype) atau live (orderType). */
+const orderLabel = p => p.orderType ? OT_LABEL[p.orderType] || p.orderType
+  : (p.otype && p.otype !== "market") ? (p.dir === "buy" ? "Buy " : "Sell ") + (p.otype === "limit" ? "Limit" : "Stop") : "";
+const isPending = p => !!(p.pending || (p.otype && p.otype !== "market"));
 const SEG_COLORS = ["#E0B04B","#5AA9E6","#B57BEA","#2BC4A0","#F07C8A","#F2A33A","#7FD1D9","#E77FB3","#9DB4FF","#C8D96F"];
 const DAYS = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
 
@@ -220,11 +225,29 @@ function calc(p) {
 /* ---------- Posisi live MT5 ---------- */
 const Live = {
   account: null, positions: [], updated: 0, timer: null,
+  loaded: false,
   get stale() { return !this.updated || Date.now() - this.updated > 120000; },
+  /** Bandingkan data lama dan baru, lalu beri notifikasi perubahan pending order / posisi. */
+  diff(prev, next) {
+    const key = x => String(x.ticket);
+    const pend = a => new Map(a.filter(x => x.kind === "pending").map(x => [key(x), x]));
+    const open = a => new Map(a.filter(x => x.kind !== "pending").map(x => [key(x), x]));
+    const pP = pend(prev), nP = pend(next), pO = open(prev), nO = open(next);
+    const lbl = x => `${x.symbol} ${OT_LABEL[x.order_type] || String(x.type).toUpperCase()} ${x.volume} lot`;
+    const rk = x => x.loss_at_sl != null ? " · risiko " + money(Math.max(0, -x.loss_at_sl)) : " · tanpa SL";
+    nP.forEach((x, k) => { if (!pP.has(k)) notify("Pending order baru", lbl(x) + " @ " + x.price_open + rk(x), x.loss_at_sl == null ? "warn" : ""); });
+    pP.forEach((x, k) => {
+      if (nP.has(k)) return;
+      if (nO.has(k)) notify("Pending order terisi", lbl(x) + " sekarang menjadi posisi terbuka" + rk(x), "warn");
+      else toast("Pending order hilang", lbl(x) + " dibatalkan atau kedaluwarsa.", "");
+    });
+    nO.forEach((x, k) => { if (!pO.has(k) && !pP.has(k)) toast("Posisi baru di MT5", `${x.symbol} ${String(x.type).toUpperCase()} ${x.volume} lot${rk(x)}`, x.loss_at_sl == null ? "warn" : "ok"); });
+  },
   get connected() { return !!(Cloud.sess && this.updated); },
   items() {
     return this.positions.map(x => ({
       mt5: true, id: "mt5-" + x.ticket, ticket: x.ticket, sym: x.symbol,
+      pending: x.kind === "pending", orderType: x.order_type || "", trigger: +x.price_trigger || NaN, expiration: +x.expiration || 0,
       dir: String(x.type).toLowerCase().includes("sell") ? "sell" : "buy",
       lot: +x.volume, entry: +x.price_open, sl: +x.sl > 0 ? +x.sl : NaN, tp: +x.tp > 0 ? +x.tp : NaN,
       cur: +x.price_current, profit: +x.profit, swap: +x.swap,
@@ -233,7 +256,7 @@ const Live = {
   },
   start() { this.stop(); if (!Cloud.sess || !Cloud.cfg()) return; this.poll(); this.timer = setInterval(() => this.poll(), 15000); },
   stop() { clearInterval(this.timer); this.timer = null; },
-  reset() { this.stop(); this.account = null; this.positions = []; this.updated = 0; onDataChange(); },
+  reset() { this.stop(); this.account = null; this.positions = []; this.updated = 0; this.loaded = false; onDataChange(); },
   async poll() {
     if (!Cloud.sess) return;
     try {
@@ -241,7 +264,9 @@ const Live = {
       const r = rows && rows[0];
       if (!r) return;
       this.account = r.account || null;
-      this.positions = Array.isArray(r.positions) ? r.positions : [];
+      const prev = this.positions, next = Array.isArray(r.positions) ? r.positions : [];
+      if (this.loaded) this.diff(prev, next);
+      this.positions = next; this.loaded = !!r.account;
       this.updated = r.account ? new Date(r.updated_at).getTime() : 0;
       const bal = this.account ? +this.account.balance : NaN;
       if (S.settings.followMt5Bal && bal > 0 && Math.abs(bal - S.settings.balance) > 0.005) { S.settings.balance = bal; save(); }
@@ -263,9 +288,12 @@ function riskInfo(p) {
   return { risk: r ? r.risk : NaN, win: r ? r.win : NaN, rr: r ? r.rr : NaN };
 }
 function riskItems() {
-  const items = S.positions.map((p, i) => ({ p, color: SEG_COLORS[i % SEG_COLORS.length], ...riskInfo(p) }));
+  const usePend = S.settings.pendInMeter !== false;
+  const items = S.positions.filter(p => usePend || !isPending(p))
+    .map((p, i) => ({ p, pending: isPending(p), color: SEG_COLORS[i % SEG_COLORS.length], ...riskInfo(p) }));
   if (S.settings.liveInMeter && Live.connected) {
-    Live.items().forEach((p, i) => items.push({ p, live: true, color: SEG_COLORS[(S.positions.length + i) % SEG_COLORS.length], ...riskInfo(p) }));
+    Live.items().filter(p => usePend || !p.pending)
+      .forEach((p, i) => items.push({ p, live: true, pending: p.pending, color: SEG_COLORS[(S.positions.length + i) % SEG_COLORS.length], ...riskInfo(p) }));
   }
   return items;
 }
@@ -422,11 +450,11 @@ function tick() {
 /* ================================================================
  * 6. KALKULATOR
  * ================================================================ */
-let dir = "buy", curEmo = "";
+let dir = "buy", curEmo = "", otype = "market";
 let curSym = resolveSym(S.last.sym) ? resolveSym(S.last.sym).s : "XAUUSD";
 
 function readForm() {
-  return { sym: curSym, dir, lot: num($("lot").value), entry: num($("entry").value), sl: num($("sl").value), tp: num($("tp").value),
+  return { sym: curSym, dir, otype, lot: num($("lot").value), entry: num($("entry").value), sl: num($("sl").value), tp: num($("tp").value),
     nights: Math.max(0, num($("nights").value) || 0), setup: $("setup").value, emo: curEmo, note: $("note").value.trim() };
 }
 
@@ -471,8 +499,14 @@ symList.addEventListener("mousedown", e => { const el = e.target.closest(".combo
 symInput.addEventListener("blur", () => setTimeout(() => { openCombo(false); symInput.value = curSym; }, 120));
 
 /* ---------- Input lain ---------- */
-function setDir(d) { dir = d; $("dirBuy").classList.toggle("on", d === "buy"); $("dirSell").classList.toggle("on", d === "sell"); syncPipFields(); update(); }
+function setDir(d) { dir = d; $("dirBuy").classList.toggle("on", d === "buy"); $("dirSell").classList.toggle("on", d === "sell"); syncPipFields(); const b = $$("[data-ot]").find(x => x.dataset.ot === otype); if (b && otype !== "market") b.click(); else update(); }
 $("dirBuy").onclick = () => setDir("buy");
+$$("[data-ot]").forEach(b => b.onclick = () => {
+  otype = b.dataset.ot;
+  $$("[data-ot]").forEach(x => x.classList.toggle("on", x === b));
+  $("otHint").textContent = { market: "Langsung dieksekusi di harga pasar.", limit: dir === "buy" ? "Buy Limit: entry di bawah harga sekarang." : "Sell Limit: entry di atas harga sekarang.", stop: dir === "buy" ? "Buy Stop: entry di atas harga sekarang." : "Sell Stop: entry di bawah harga sekarang." }[otype];
+  update();
+});
 $("dirSell").onclick = () => setDir("sell");
 $$("[data-lot]").forEach(b => b.onclick = () => {
   const st = S.settings.lotStep || 0.01;
@@ -513,7 +547,7 @@ let lastSizerLot = NaN;
 function update() {
   const p = readForm(), st = S.settings, sym = resolveSym(curSym), bal = st.balance;
   $("tSym").textContent = curSym;
-  $("tDir").textContent = `${dir.toUpperCase()} ${isFinite(p.lot) ? p.lot : ""}`;
+  $("tDir").textContent = `${otype === "market" ? dir.toUpperCase() : orderLabel(p).toUpperCase()} ${isFinite(p.lot) ? p.lot : ""}`;
   $("tDir").className = "badge " + dir;
 
   const r = calc(p);
@@ -576,7 +610,7 @@ function update() {
   const overCap = st.block && okSl && after > st.maxRisk;
   const valid = okSl && (!isFinite(p.tp) || okTp);
   $("addPos").disabled = !valid || overCap || lim.locked;
-  $("addPos").textContent = lim.locked ? "Entry dikunci: batas rugi tercapai" : overCap ? `Ditolak: melewati batas ${st.maxRisk}%` : "Tambahkan ke posisi";
+  $("addPos").textContent = lim.locked ? "Entry dikunci: batas rugi tercapai" : overCap ? `Ditolak: melewati batas ${st.maxRisk}%` : otype === "market" ? "Tambahkan ke posisi" : "Tambahkan pending order";
 
   /* Penghitung lot */
   const rv = num($("riskVal").value);
@@ -620,12 +654,14 @@ function renderBudget(preview = 0) {
   $("bBalance").textContent = money(bal);
   $("bUsed").textContent = money(used);
   $("bLeft").textContent = money(Math.max(0, bal * st.maxRisk / 100 - used));
-  $("bCount").textContent = items.length;
+  const nPend = items.filter(it => it.pending).length;
+  $("bCount").textContent = nPend ? `${items.length - nPend} + ${nPend} pending` : items.length;
 
   let segs = items.map(it => {
     const w = isFinite(it.risk) ? it.risk / bal * 100 / scaleMax * 100 : 0;
-    const lbl = `${it.p.sym} ${it.p.dir.toUpperCase()} ${it.p.lot} lot${it.live ? " (MT5)" : ""}: ${isFinite(it.risk) ? money(it.risk) : "tanpa SL"}`;
-    return `<div class="seg${it.live ? " live" : ""}" title="${esc(lbl)}" style="width:${w}%;background-color:${it.color}"></div>`;
+    const kind = it.pending ? orderLabel(it.p) : it.p.dir.toUpperCase();
+    const lbl = `${it.p.sym} ${kind} ${it.p.lot} lot${it.live ? " (MT5)" : ""}${it.pending ? " · pending" : ""}: ${isFinite(it.risk) ? money(it.risk) : "tanpa SL"}`;
+    return `<div class="seg${it.live ? " live" : ""}${it.pending ? " pending" : ""}" title="${esc(lbl)}" style="width:${w}%;background-color:${it.color}"></div>`;
   }).join("");
   if (preview > 0) segs += `<div class="seg preview" title="Rencana entry saat ini" style="width:${preview / bal * 100 / scaleMax * 100}%"></div>`;
   $("meterFill").innerHTML = segs;
@@ -644,13 +680,15 @@ function renderBudget(preview = 0) {
   setBar("weekBar", "weekTxt", lim.wUsed, lim.wLim, st.weeklyLoss);
 
   const noSl = items.filter(it => it.noSl).length;
+  const pend = items.filter(it => it.pending), pendRisk = pend.reduce((a, it) => a + (isFinite(it.risk) ? it.risk : 0), 0);
   let text;
   if (level === "locked") text = `Batas rugi ${lim.dHit ? "harian" : "mingguan"} tercapai (${money(lim.dHit ? lim.dUsed : lim.wUsed)}). Entry baru dikunci. Istirahat dulu, evaluasi jurnal. Jika itu hanya uji coba, hapus trade-nya di menu Jurnal.`;
   else if (level === "danger") text = `Total SL sudah ${pct(usedPct)} dari modal, melewati batas ${st.maxRisk}%. Kurangi lot atau tutup sebagian posisi.`;
   else if (level === "warn") text = `Mendekati batas: total SL ${pct(usedPct)}. Sisa ruang risiko ${money(bal * st.maxRisk / 100 - used)}.`;
   else if (!items.length) text = "Belum ada posisi. Isi rencana entry di bawah untuk mulai mengukur risiko.";
   else text = `Aman. Total SL ${pct(usedPct)} dari modal, di bawah batas ${st.maxRisk}%.`;
-  if (noSl) text += ` ${noSl} posisi MT5 tanpa SL tidak bisa diukur.`;
+  if (pend.length && level !== "locked") text += ` Termasuk ${pend.length} pending order (${money(pendRisk)}) yang belum terisi.`;
+  if (noSl) text += ` ${noSl} posisi/order MT5 tanpa SL tidak bisa diukur.`;
   $("budgetMsg").className = "budget-msg " + (noSl && level === "ok" ? "warn" : level);
   $("budgetMsg").textContent = text;
 
@@ -717,18 +755,20 @@ function renderPositions() {
     const r = calc(p), d = symDigits(p.sym);
     return `<tr>
       <td class="num"><span class="dot" style="background:${SEG_COLORS[i % SEG_COLORS.length]}"></span>${esc(p.sym)}</td>
-      <td><span class="pill ${p.dir}">${p.dir.toUpperCase()}</span></td>
+      <td><span class="pill ${p.dir}">${p.dir.toUpperCase()}</span>${isPending(p) ? ` <span class="pill pend">${esc(orderLabel(p))}</span>` : ""}</td>
       <td class="num">${p.lot}</td>
       <td class="num">${fmtP(p.entry, d)}</td><td class="num">${fmtP(p.sl, d)}</td><td class="num">${isFinite(p.tp) ? fmtP(p.tp, d) : "—"}</td>
       <td class="num c-sell">${r ? money(-r.risk) : "—"}</td>
       <td class="num c-buy">${r && isFinite(r.win) ? money(r.win) : "—"}</td>
       <td class="num">${r && isFinite(r.netRR) ? "1:" + fmt(r.netRR, 2) : "—"}</td>
       <td>${esc(p.setup) || '<span class="c-muted">—</span>'}</td>
-      <td><div class="actions">
+      <td><div class="actions">${isPending(p) ? `
+        <button class="btn sm" data-close="fill" data-id="${p.id}" title="Order sudah terisi menjadi posisi">Terisi</button>
+        <button class="btn sm ghost" data-close="del" data-id="${p.id}" title="Batalkan pending order" aria-label="Batalkan pending order">Batal</button>` : `
         <button class="btn sm" data-close="tp" data-id="${p.id}" ${isFinite(p.tp) ? "" : "disabled"}>TP</button>
         <button class="btn sm" data-close="sl" data-id="${p.id}">SL</button>
         <button class="btn sm" data-close="manual" data-id="${p.id}">Harga lain</button>
-        <button class="btn sm ghost" data-close="del" data-id="${p.id}" title="Hapus tanpa mencatat" aria-label="Hapus tanpa mencatat">✕</button>
+        <button class="btn sm ghost" data-close="del" data-id="${p.id}" title="Hapus tanpa mencatat" aria-label="Hapus tanpa mencatat">✕</button>`}
       </div></td></tr>`;
   }).join("");
   renderLive();
@@ -738,8 +778,13 @@ $("posBody").addEventListener("click", async e => {
   const b = e.target.closest("[data-close]"); if (!b) return;
   const idx = S.positions.findIndex(p => p.id === b.dataset.id); if (idx < 0) return;
   const p = S.positions[idx], mode = b.dataset.close;
+  if (mode === "fill") {
+    p.otype = "market"; p.time = new Date().toISOString(); save();
+    toast("Pending order terisi", `${p.sym} ${p.dir.toUpperCase()} ${p.lot} lot sekarang posisi terbuka.`, "ok"); onDataChange(); return;
+  }
   if (mode === "del") {
-    if (!(await confirmBox("Hapus posisi?", `${p.sym} ${p.dir.toUpperCase()} ${p.lot} lot akan dihapus tanpa dicatat ke jurnal.`, "Hapus"))) return;
+    const pd = isPending(p);
+    if (!(await confirmBox(pd ? "Batalkan pending order?" : "Hapus posisi?", `${p.sym} ${pd ? orderLabel(p) : p.dir.toUpperCase()} ${p.lot} lot akan dihapus tanpa dicatat ke jurnal.`, pd ? "Batalkan order" : "Hapus"))) return;
     S.positions.splice(idx, 1); save(); onDataChange(); return;
   }
   let exit = mode === "tp" ? p.tp : mode === "sl" ? p.sl : NaN;
@@ -782,14 +827,21 @@ function renderLive() {
     ["Margin terpakai", money(+acct.margin)], ["Free margin", money(+acct.margin_free)],
     ["Margin level", +acct.margin > 0 ? pct(acct.equity / acct.margin * 100, 0) : "—"]
   ].map(([k, v]) => `<div class="kpi"><span>${k}</span><b class="num">${v}</b></div>`).join("") : "";
-  const items = Live.items();
-  if (!items.length) { $("liveBody").innerHTML = `<tr><td colspan="9" class="empty">${Live.updated ? "Tidak ada posisi terbuka di MT5." : "Belum ada data dari MT5."}</td></tr>`; return; }
-  $("liveBody").innerHTML = items.map(p => {
-    const ri = riskInfo(p), d = symDigits(p.sym);
-    const status = ri.noSl ? `<span class="pill high">Tanpa SL</span>` : ri.locked ? `<span class="pill buy">SL di profit</span>` : `<span class="pill neu">Aktif</span>`;
-    return `<tr><td class="num">${esc(p.sym)}</td><td><span class="pill ${p.dir}">${p.dir.toUpperCase()}</span></td><td class="num">${p.lot}</td>
+  const all = Live.items().sort((a, b) => a.pending - b.pending);
+  const nOpen = all.filter(p => !p.pending).length, nPend = all.length - nOpen;
+  $("liveCount").textContent = Live.updated ? `${nOpen} posisi terbuka · ${nPend} pending order` : "";
+  if (!all.length) { $("liveBody").innerHTML = `<tr><td colspan="10" class="empty">${Live.updated ? "Tidak ada posisi terbuka atau pending order di MT5." : "Belum ada data dari MT5."}</td></tr>`; return; }
+  $("liveBody").innerHTML = all.map(p => {
+    const ri = riskInfo(p), sym = resolveSym(p.sym), d = sym ? sym.d : 5;
+    let status;
+    if (p.pending) {
+      const gap = sym && isFinite(p.cur) ? Math.abs((isFinite(p.trigger) ? p.trigger : p.entry) - p.cur) / sym.pip : NaN;
+      status = `<span class="pill pend">Menunggu</span>${isFinite(gap) ? ` <span class="c-muted num">${fmt(gap, 1)} pip lagi</span>` : ""}${ri.noSl ? ' <span class="pill high">Tanpa SL</span>' : ""}`;
+    } else status = ri.noSl ? `<span class="pill high">Tanpa SL</span>` : ri.locked ? `<span class="pill buy">SL di profit</span>` : `<span class="pill neu">Aktif</span>`;
+    const jenis = p.pending ? `<span class="pill pend">${esc(orderLabel(p))}</span>` : `<span class="pill open">Open</span>`;
+    return `<tr class="${p.pending ? "row-pend" : ""}"><td class="num">${esc(p.sym)}</td><td>${jenis}</td><td><span class="pill ${p.dir}">${p.dir.toUpperCase()}</span></td><td class="num">${p.lot}</td>
       <td class="num">${fmtP(p.entry, d)}</td><td class="num">${isFinite(p.sl) ? fmtP(p.sl, d) : "—"}</td><td class="num">${isFinite(p.tp) ? fmtP(p.tp, d) : "—"}</td>
-      <td class="num ${p.profit >= 0 ? "c-buy" : "c-sell"}">${moneyS(p.profit)}</td>
+      <td class="num ${p.pending ? "c-muted" : p.profit >= 0 ? "c-buy" : "c-sell"}">${p.pending ? "—" : moneyS(p.profit)}</td>
       <td class="num c-sell">${isFinite(ri.risk) ? money(-ri.risk) : "∞"}</td><td>${status}</td></tr>`;
   }).join("");
 }
@@ -1257,7 +1309,7 @@ function fillSettings() {
   $("cloudIntro").textContent = builtIn
     ? "Masuk atau daftar dengan email untuk menyinkronkan data di semua perangkat. Setiap orang memakai akunnya sendiri, dan posisi MT5 bisa masuk otomatis."
     : "Opsional. Dengan akun cloud, data tersinkron di semua perangkat Anda, setiap orang punya akun sendiri, dan posisi MT5 bisa masuk otomatis.";
-  chk("aLiveMeter", st.liveInMeter); chk("aFollowBal", st.followMt5Bal);
+  chk("aLiveMeter", st.liveInMeter); chk("aFollowBal", st.followMt5Bal); chk("aPendMeter", st.pendInMeter !== false);
   renderSymAdmin(); Cloud.render();
 }
 $("saveAcc").onclick = () => {
@@ -1552,6 +1604,7 @@ $("cNewToken").onclick = async () => {
   try { await Cloud.newToken(); toast("Token baru dibuat", "Perbarui input SyncToken di EA.", "ok"); } catch (e) { toast("Gagal", e.message, "danger"); }
 };
 $("aLiveMeter").onchange = () => { S.settings.liveInMeter = $("aLiveMeter").checked; save(); onDataChange(); };
+$("aPendMeter").onchange = () => { S.settings.pendInMeter = $("aPendMeter").checked; save(); onDataChange(); };
 $("aFollowBal").onchange = () => { S.settings.followMt5Bal = $("aFollowBal").checked; save(); Live.poll(); };
 
 /* ================================================================
