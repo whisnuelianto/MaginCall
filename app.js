@@ -5,7 +5,7 @@
 (() => {
 "use strict";
 
-const VERSION = "2.0.0";
+const VERSION = "2.1.0";
 const KEY = "riskdesk.v2", OLD_KEY = "riskdesk.v1", AUTH_KEY = "riskdesk.auth";
 
 /* ================================================================
@@ -1248,6 +1248,15 @@ function fillSettings() {
   $("rateGrid").innerHTML = Object.entries(S.rates).filter(([c]) => c !== "USD" && c !== "USC").map(([c, v]) =>
     `<div class="field"><label for="r_${c}">1 USD = … ${c}</label><input type="number" class="num" id="r_${c}" data-rate="${c}" step="any" value="${v}"></div>`).join("");
   set("sbUrl", st.sb.url); set("sbKey", st.sb.key);
+  const def = defaultSb(), builtIn = !!(def.url && def.key);
+  $("sbUrl").placeholder = def.url || "https://xxxx.supabase.co";
+  $("sbKey").placeholder = builtIn ? "Memakai key bawaan situs" : "";
+  $$("#t-cloud .steps")[0].hidden = builtIn;
+  $("sbUrl").closest(".row").hidden = builtIn && !st.sb.url;
+  $("saveSb").parentElement.hidden = builtIn && !st.sb.url;
+  $("cloudIntro").textContent = builtIn
+    ? "Masuk atau daftar dengan email untuk menyinkronkan data di semua perangkat. Setiap orang memakai akunnya sendiri, dan posisi MT5 bisa masuk otomatis."
+    : "Opsional. Dengan akun cloud, data tersinkron di semua perangkat Anda, setiap orang punya akun sendiri, dan posisi MT5 bisa masuk otomatis.";
   chk("aLiveMeter", st.liveInMeter); chk("aFollowBal", st.followMt5Bal);
   renderSymAdmin(); Cloud.render();
 }
@@ -1378,7 +1387,11 @@ function refreshAll() {
 const Cloud = {
   sess: (() => { try { return JSON.parse(lsGet(AUTH_KEY)); } catch (e) { return null; } })(),
   timer: null, status: "local", lastSync: 0, token: "",
-  cfg() { const sb = S.settings.sb; return sb && sb.url && sb.key ? { url: sb.url.trim().replace(/\/+$/, ""), key: sb.key.trim() } : null; },
+  cfg() {
+    const sb = S.settings.sb || {}, def = defaultSb();
+    const url = sb.url || def.url, key = sb.key || def.key;
+    return url && key ? { url: cleanSbUrl(url), key: key.trim() } : null;
+  },
   setSess(s) { this.sess = s; s ? lsSet(AUTH_KEY, JSON.stringify(s)) : lsDel(AUTH_KEY); },
   mkSess(j) { return { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + (j.expires_in || 3600) * 1000, user: { id: j.user.id, email: j.user.email } }; },
   async req(path, { method = "GET", body, auth = true, prefer } = {}) {
@@ -1462,9 +1475,26 @@ const Cloud = {
   }
 };
 $("syncChip").onclick = () => { go("settings"); if (authed) $$(".tabs button").find(b => b.dataset.tab === "t-cloud").click(); };
+/** Koneksi bawaan dari config.js (jika pemilik situs sudah mengisinya). */
+function defaultSb() {
+  const c = window.RISKDESK_CONFIG || {};
+  const key = String(c.supabaseKey || "").trim();
+  return { url: String(c.supabaseUrl || "").trim(), key: /^sb_secret_/i.test(key) ? "" : key };
+}
+/** Rapikan Project URL: buang /rest/v1 dan sejenisnya, ubah alamat dashboard menjadi https://REF.supabase.co */
+function cleanSbUrl(raw) {
+  let u = String(raw || "").trim().replace(/\s+/g, "");
+  const dash = u.match(/supabase\.com\/dashboard\/project\/([a-z0-9]+)/i);
+  if (dash) return `https://${dash[1].toLowerCase()}.supabase.co`;
+  if (u && !/^https?:\/\//i.test(u)) u = "https://" + u;
+  const m = u.match(/^(https?:\/\/[^\/?#]+)/i);
+  return m ? m[1].replace(/^http:/i, "https:") : u;
+}
 $("saveSb").onclick = () => {
-  const url = $("sbUrl").value.trim(), key = $("sbKey").value.trim();
-  if (url && !/^https:\/\/.+/.test(url)) { toast("URL tidak valid", "Project URL harus diawali https://", "danger"); return; }
+  const url = $("sbUrl").value.trim() ? cleanSbUrl($("sbUrl").value) : "", key = $("sbKey").value.trim();
+  if (url && !/^https:\/\/[^\/]+\.[a-z]{2,}$/i.test(url)) { toast("URL tidak valid", "Contoh yang benar: https://abcdefgh.supabase.co", "danger"); return; }
+  if (key && /^sb_secret_/i.test(key)) { toast("Itu secret key", "Jangan pakai secret key. Salin publishable / anon key.", "danger"); return; }
+  $("sbUrl").value = url;
   S.settings.sb = { url, key }; save({ noSync: true });
   $("cloudMsg").textContent = url && key ? "Koneksi disimpan. Silakan masuk atau daftar." : "Koneksi dihapus.";
 };
@@ -1483,7 +1513,10 @@ async function cloudAuth(mode) {
   } catch (e) {
     const m = e.message || "";
     $("cloudMsg").textContent = /invalid login/i.test(m) ? "Email atau kata sandi salah." : /not confirmed/i.test(m) ? "Email belum dikonfirmasi. Cek kotak masuk Anda."
-      : /relation|does not exist|schema cache/i.test(m) ? "Tabel belum dibuat. Jalankan supabase-setup.sql di SQL Editor." : "Gagal: " + m;
+      : /relation|does not exist|schema cache/i.test(m) ? "Tabel belum dibuat. Jalankan supabase-setup.sql di SQL Editor."
+      : /invalid path/i.test(m) ? "Project URL salah. Isi persis seperti https://abcdefgh.supabase.co tanpa tambahan apa pun, lalu Simpan koneksi."
+      : /api key|apikey|jwt/i.test(m) ? "Key tidak cocok. Salin ulang publishable / anon key dari Project Settings → API Keys."
+      : /failed to fetch|networkerror/i.test(m) ? "Tidak bisa terhubung ke Supabase. Periksa Project URL dan koneksi internet." : "Gagal: " + m;
   }
 }
 $("cLogin").onclick = () => cloudAuth("in");
